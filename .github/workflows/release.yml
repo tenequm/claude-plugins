@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Create Release Pull Request or Tag
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset:version
+          publish: pnpm release
+          commit: "chore: version skills"
+          title: "chore: version skills"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push tags to remote
+        if: steps.changesets.outputs.published == 'true'
+        run: git push --follow-tags
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.changesets.outputs.hasChangesets }}" = "true" ]; then
+            echo "## 📦 Changesets Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "A Version Packages PR will be created or updated." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.changesets.outputs.published }}" = "true" ]; then
+            echo "## 🎉 Skills Released" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Published packages:" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo '${{ steps.changesets.outputs.publishedPackages }}' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ No Changes" >> $GITHUB_STEP_SUMMARY
+          fi

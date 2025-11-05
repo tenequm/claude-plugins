@@ -1,0 +1,23 @@
+{
+  "name": "claude-skills",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "changeset": "changeset",
+    "changeset:add": "changeset",
+    "changeset:version": "changeset version && node scripts/sync-marketplace.mjs",
+    "changeset:status": "changeset status",
+    "release": "node scripts/sync-marketplace.mjs && changeset tag",
+    "validate": "python3 .claude/skills/skill-creator/scripts/quick_validate.py",
+    "validate:all": "node scripts/validate-all.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.20.0"
+}

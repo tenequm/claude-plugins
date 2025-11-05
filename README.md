@@ -11,7 +11,25 @@ Personal collection of Claude Code skills for various development tasks.
 
 ## Installation
 
-### Using with Claude Code
+### Quick Install (Recommended)
+
+Install skills as plugins using Claude Code's marketplace system:
+
+```bash
+# 1. Add this marketplace
+/plugin marketplace add tenequm/claude-skills
+
+# 2. Install specific skills
+/plugin install gh-cli@claude-skills
+/plugin install chrome-extension-wxt@claude-skills
+
+# Or browse and install interactively
+/plugin
+```
+
+### Alternative: Manual Installation
+
+If you prefer to manage skills manually:
 
 ```bash
 # Clone this repo to your preferred location
@@ -22,15 +40,68 @@ ln -s /path/to/claude-skills/chrome-extension-wxt ~/.claude/skills/chrome-extens
 ln -s /path/to/claude-skills/gh-cli ~/.claude/skills/gh-cli
 ```
 
-### Manual Installation
+## For Contributors
 
-Copy any skill directory to `~/.claude/skills/`:
+### Requirements
+
+- Node.js 24+ LTS
+- pnpm 10+
+
+### Setup
 
 ```bash
-cp -r /path/to/claude-skills/chrome-extension-wxt ~/.claude/skills/
+pnpm install
 ```
 
-## Creating Your Own Skills
+### Making Changes to Skills
+
+When you modify a skill, create a changeset to document the change:
+
+```bash
+# 1. Make your changes to a skill
+vim gh-cli/SKILL.md
+
+# 2. Validate your changes
+pnpm validate gh-cli
+
+# 3. Create a changeset
+pnpm changeset
+# Follow prompts:
+#   - Select which skill(s) changed
+#   - Choose bump type (patch/minor/major)
+#   - Write a summary of changes
+
+# 4. Commit everything including the changeset file
+git add .
+git commit -m "feat(gh-cli): add trending repos section"
+
+# 5. Push
+git push
+```
+
+**What happens next:**
+1. GitHub Actions detects your changeset
+2. A "Version Packages" PR is created/updated automatically
+3. When merged: versions bump, marketplace.json updates, git tags created
+4. Users can install: `/plugin marketplace update claude-skills`
+
+### Versioning Guidelines
+
+- **Patch** (1.0.x): Bug fixes, typos, link corrections, small improvements
+- **Minor** (1.x.0): New features, sections, examples, significant additions
+- **Major** (x.0.0): Breaking changes (skill structure changes, removed features)
+
+### Validation
+
+```bash
+# Validate specific skill
+pnpm validate gh-cli
+
+# Validate all skills
+pnpm validate:all
+```
+
+### Creating New Skills
 
 Each skill should follow Anthropic's best practices:
 
