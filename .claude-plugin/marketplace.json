@@ -1,8 +1,8 @@
 {
-  "$schema": "https://storage.googleapis.com/osv-schemas/marketplace-schema-v1.json",
   "name": "claude-skills",
   "owner": {
-    "name": "tenequm"
+    "name": "tenequm",
+    "email": "misha@kolesnik.io"
   },
   "plugins": [
     {
