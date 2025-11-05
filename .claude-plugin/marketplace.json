@@ -4,12 +4,18 @@
       "name": "gh-cli",
       "source": "./gh-cli",
       "description": "GitHub CLI for remote repository analysis, file fetching, codebase comparison, and discovering trending code/repos. Use when analyzing repos without cloning, comparing codebases, or searching for popular GitHub projects.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "tenequm"
       },
       "category": "developer-tools",
-      "keywords": ["github", "cli", "repository", "analysis", "gh"],
+      "keywords": [
+        "github",
+        "cli",
+        "repository",
+        "analysis",
+        "gh"
+      ],
       "license": "MIT",
       "repository": "https://github.com/tenequm/claude-skills",
       "strict": false
@@ -23,7 +29,13 @@
         "name": "tenequm"
       },
       "category": "developer-tools",
-      "keywords": ["chrome", "extension", "wxt", "browser", "webextension"],
+      "keywords": [
+        "chrome",
+        "extension",
+        "wxt",
+        "browser",
+        "webextension"
+      ],
       "license": "MIT",
       "repository": "https://github.com/tenequm/claude-skills",
       "strict": false
