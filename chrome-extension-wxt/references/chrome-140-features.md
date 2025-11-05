@@ -14,7 +14,7 @@ Determines the position of the side panel (left or right) in the browser window.
 
 ```typescript
 chrome.sidePanel.getLayout(): Promise<{
-  position: 'left' | 'right';
+  side: 'left' | 'right';
 }>
 ```
 
@@ -23,9 +23,9 @@ chrome.sidePanel.getLayout(): Promise<{
 ```typescript
 // Get current side panel layout
 const layout = await chrome.sidePanel.getLayout();
-console.log('Side panel is positioned on the:', layout.position);
+console.log('Side panel is positioned on the:', layout.side);
 
-if (layout.position === 'right') {
+if (layout.side === 'right') {
   console.log('Side panel is on the right');
 } else {
   console.log('Side panel is on the left');
@@ -43,8 +43,8 @@ export default defineContentScript({
     const layout = await chrome.sidePanel.getLayout();
     const documentDir = document.documentElement.dir;
 
-    // Adjust UI based on panel position and text direction
-    if (layout.position === 'right' && documentDir === 'rtl') {
+    // Adjust UI based on panel side and text direction
+    if (layout.side === 'right' && documentDir === 'rtl') {
       // Apply RTL-optimized positioning
       applyRTLStyles();
     }
@@ -57,18 +57,18 @@ export default defineContentScript({
 ```typescript
 // Popup component
 function App() {
-  const [panelPosition, setPanelPosition] = useState<'left' | 'right'>('left');
+  const [panelSide, setPanelSide] = useState<'left' | 'right'>('left');
 
   useEffect(() => {
-    chrome.sidePanel.getLayout().then(({ position }) => {
-      setPanelPosition(position);
+    chrome.sidePanel.getLayout().then(({ side }) => {
+      setPanelSide(side);
     });
   }, []);
 
   return (
-    <div className={`panel-${panelPosition}`}>
-      <p>Panel is positioned on the {panelPosition}</p>
-      {/* Adjust UI layout based on panel position */}
+    <div className={`panel-${panelSide}`}>
+      <p>Panel is positioned on the {panelSide}</p>
+      {/* Adjust UI layout based on panel side */}
     </div>
   );
 }
@@ -82,7 +82,7 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
   const layout = await chrome.sidePanel.getLayout();
 
   // Position notifications away from side panel
-  const notificationPosition = layout.position === 'right'
+  const notificationPosition = layout.side === 'right'
     ? 'bottom-left'
     : 'bottom-right';
 
@@ -107,11 +107,11 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 Always check if the API is available:
 
 ```typescript
-async function getSidePanelPosition(): Promise<'left' | 'right' | null> {
+async function getSidePanelSide(): Promise<'left' | 'right' | null> {
   if (chrome.sidePanel?.getLayout) {
     try {
       const layout = await chrome.sidePanel.getLayout();
-      return layout.position;
+      return layout.side;
     } catch (error) {
       console.error('Failed to get side panel layout:', error);
       return null;
@@ -128,25 +128,25 @@ async function getSidePanelPosition(): Promise<'left' | 'right' | null> {
 import { useState, useEffect } from 'react';
 
 function SidePanel() {
-  const [position, setPosition] = useState<'left' | 'right'>('left');
+  const [side, setSide] = useState<'left' | 'right'>('left');
 
   useEffect(() => {
-    // Get initial position
-    chrome.sidePanel.getLayout().then(({ position }) => {
-      setPosition(position);
+    // Get initial side
+    chrome.sidePanel.getLayout().then(({ side }) => {
+      setSide(side);
     });
 
-    // Note: Chrome doesn't fire events when user changes panel position
+    // Note: Chrome doesn't fire events when user changes panel side
     // You may need to periodically check or reload when panel is opened
   }, []);
 
   return (
-    <div className={`sidepanel-container position-${position}`}>
-      <header className={position === 'right' ? 'rtl' : 'ltr'}>
+    <div className={`sidepanel-container side-${side}`}>
+      <header className={side === 'right' ? 'rtl' : 'ltr'}>
         <h1>Side Panel Content</h1>
       </header>
       <main>
-        <p>Current position: {position}</p>
+        <p>Current side: {side}</p>
       </main>
     </div>
   );
@@ -155,7 +155,7 @@ function SidePanel() {
 
 #### Default Behavior
 
-- **New Chrome installations (2025+):** May default to right-side positioning
+- **New Chrome installations (2025+):** May default to right side
 - **Upgraded Chrome installations:** Retains user's previous preference
 - **User can change:** Users can move side panel between left and right at any time
 
@@ -167,19 +167,19 @@ function SidePanel() {
 // hooks/useSidePanelPosition.ts
 import { useState, useEffect } from 'react';
 
-export function useSidePanelPosition() {
-  const [position, setPosition] = useState<'left' | 'right'>('left');
+export function useSidePanelSide() {
+  const [side, setSide] = useState<'left' | 'right'>('left');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (chrome.sidePanel?.getLayout) {
       chrome.sidePanel
         .getLayout()
-        .then(({ position }) => {
-          setPosition(position);
+        .then(({ side }) => {
+          setSide(side);
         })
         .catch((error) => {
-          console.error('Failed to get side panel position:', error);
+          console.error('Failed to get side panel side:', error);
         })
         .finally(() => {
           setIsLoading(false);
@@ -189,24 +189,24 @@ export function useSidePanelPosition() {
     }
   }, []);
 
-  return { position, isLoading };
+  return { side, isLoading };
 }
 
 // Usage in component
 function MyComponent() {
-  const { position, isLoading } = useSidePanelPosition();
+  const { side, isLoading } = useSidePanelSide();
 
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className={`content-${position}`}>
+    <div className={`content-${side}`}>
       {/* Content positioned based on panel location */}
     </div>
   );
 }
 ```
 
-#### Styling Based on Position
+#### Styling Based on Side
 
 ```css
 /* CSS for panel-aware layouts */
@@ -230,18 +230,6 @@ function MyComponent() {
 }
 ```
 
-## Future Chrome Features
-
-### Chrome 143 (December 2025 - Expected)
-
-Expected updates based on Chrome development roadmap:
-
-- **CSS Enhancements:** Improved shadow DOM styling support
-- **Web Platform Features:** New CSS properties for extension UIs
-- **Performance:** Better service worker lifecycle management
-
-**Note:** These are based on current development plans and may change. Check official Chrome Extension docs for confirmed features.
-
 ## Staying Updated
 
 To stay informed about new Chrome Extension features:
@@ -255,27 +243,27 @@ To stay informed about new Chrome Extension features:
 
 If your extension currently assumes side panel is always on the left:
 
-### Before (Assumed Left Position)
+### Before (Assumed Left Side)
 
 ```typescript
-// Old code - assumes left position
+// Old code - assumes left side
 function positionContent() {
   const content = document.getElementById('content');
   content.style.marginLeft = '400px'; // Fixed left margin
 }
 ```
 
-### After (Position-Aware)
+### After (Side-Aware)
 
 ```typescript
-// New code - adapts to panel position
+// New code - adapts to panel side
 async function positionContent() {
   const content = document.getElementById('content');
 
   if (chrome.sidePanel?.getLayout) {
-    const { position } = await chrome.sidePanel.getLayout();
+    const { side } = await chrome.sidePanel.getLayout();
 
-    if (position === 'right') {
+    if (side === 'right') {
       content.style.marginRight = '400px';
       content.style.marginLeft = '0';
     } else {

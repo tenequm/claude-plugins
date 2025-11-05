@@ -82,19 +82,8 @@ const response = await browser.tabs.sendMessage(tabId, {
   data: 'hello'
 });
 
-// Execute script in tab
-await browser.tabs.executeScript(tabId, {
-  file: 'content.js',
-  // or
-  code: 'console.log("Hello from injected script")',
-});
-
-// Inject CSS
-await browser.tabs.insertCSS(tabId, {
-  file: 'styles.css',
-  // or
-  code: 'body { background: red; }',
-});
+// Note: tabs.executeScript and tabs.insertCSS are deprecated in MV3
+// Use chrome.scripting API instead (see scripting section below)
 
 // Tab events
 browser.tabs.onCreated.addListener((tab) => {
@@ -631,6 +620,79 @@ browser.bookmarks.onRemoved.addListener((id, removeInfo) => {
 });
 ```
 
+### chrome.scripting
+
+Inject JavaScript and CSS into web pages (replaces deprecated tabs.executeScript/insertCSS).
+
+**Official Docs:** https://developer.chrome.com/docs/extensions/reference/api/scripting
+
+**Required permission:** `"scripting"`
+
+```typescript
+// Execute script in tab
+await chrome.scripting.executeScript({
+  target: { tabId: tabId },
+  files: ['content.js'],
+});
+
+// Execute inline function
+await chrome.scripting.executeScript({
+  target: { tabId: tabId },
+  func: () => {
+    console.log('Hello from injected script');
+  },
+});
+
+// Execute with arguments
+await chrome.scripting.executeScript({
+  target: { tabId: tabId },
+  func: (color) => {
+    document.body.style.backgroundColor = color;
+  },
+  args: ['red'],
+});
+
+// Inject CSS file
+await chrome.scripting.insertCSS({
+  target: { tabId: tabId },
+  files: ['styles.css'],
+});
+
+// Inject inline CSS
+await chrome.scripting.insertCSS({
+  target: { tabId: tabId },
+  css: 'body { background: red; }',
+});
+
+// Remove CSS
+await chrome.scripting.removeCSS({
+  target: { tabId: tabId },
+  css: 'body { background: red; }',
+});
+
+// Register content scripts dynamically
+await chrome.scripting.registerContentScripts([{
+  id: 'my-script',
+  matches: ['*://example.com/*'],
+  js: ['content.js'],
+  runAt: 'document_idle',
+}]);
+
+// Get registered scripts
+const scripts = await chrome.scripting.getRegisteredContentScripts();
+
+// Unregister scripts
+await chrome.scripting.unregisterContentScripts({
+  ids: ['my-script'],
+});
+
+// Update existing scripts
+await chrome.scripting.updateContentScripts([{
+  id: 'my-script',
+  matches: ['*://example.com/*', '*://example.org/*'],
+}]);
+```
+
 ### chrome.history
 
 Access browser history.
@@ -680,24 +742,24 @@ browser.history.onVisited.addListener((result) => {
 
 ### sidePanel.getLayout()
 
-New in Chrome 140 - determine side panel position (left or right).
+New in Chrome 140 - determine side panel side (left or right).
 
 **Official Docs:** https://developer.chrome.com/docs/extensions/reference/api/sidePanel#method-getLayout
 
 ```typescript
 // Get side panel layout
 const layout = await chrome.sidePanel.getLayout();
-console.log('Side panel position:', layout.position); // 'left' or 'right'
+console.log('Side panel side:', layout.side); // 'left' or 'right'
 
 // Useful for RTL language support
-if (layout.position === 'right') {
+if (layout.side === 'right') {
   // Apply RTL-specific styling or behavior
 }
 ```
 
 **Use Cases:**
 - Adapting UI for RTL languages
-- Adjusting panel content based on position
+- Adjusting panel content based on side
 - Optimizing user experience based on panel location
 
 **Browser Support:** Chrome 140+ (September 2025)

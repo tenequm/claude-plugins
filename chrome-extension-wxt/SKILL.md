@@ -15,7 +15,7 @@ Use this skill when:
 - Building extension features (popup, content scripts, background scripts)
 - Implementing cross-browser compatibility
 - Working with Manifest V3 (mandatory standard as of 2025, V2 deprecated)
-- Integrating React, Vue, Svelte, or Solid with extensions
+- Integrating React 19, Vue, Svelte, or Solid with extensions
 
 ## Quick Start Workflow
 

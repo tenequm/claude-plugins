@@ -41,7 +41,7 @@ You are assisting with maintaining a public repository of Claude Code skills. Th
 
 **Current Skills:**
 1. **chrome-extension-wxt** - Chrome extension development with WXT framework
-   - React 18+ integration
+   - React 19 integration
    - Chrome 140+ APIs
    - Modern UI libraries (shadcn/ui, Mantine)
    - Quality: 10/10 ✅
