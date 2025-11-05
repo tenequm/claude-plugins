@@ -39,6 +39,7 @@ jobs:
           publish: pnpm release
           commit: "chore: version skills"
           title: "chore: version skills"
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

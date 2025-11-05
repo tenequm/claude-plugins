@@ -13,6 +13,7 @@
     "validate:all": "node scripts/validate-all.mjs"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.5.1",
     "@changesets/cli": "^2.29.7"
   },
   "engines": {
