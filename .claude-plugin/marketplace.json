@@ -1,4 +1,9 @@
 {
+  "$schema": "https://storage.googleapis.com/osv-schemas/marketplace-schema-v1.json",
+  "name": "claude-skills",
+  "owner": {
+    "name": "tenequm"
+  },
   "plugins": [
     {
       "name": "gh-cli",
