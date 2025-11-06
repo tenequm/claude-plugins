@@ -1,6 +1,6 @@
 {
   "name": "gh-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "GitHub CLI for remote repository analysis, file fetching, codebase comparison, and discovering trending code/repos. Use when analyzing repos without cloning, comparing codebases, or searching for popular GitHub projects.",
   "scripts": {
