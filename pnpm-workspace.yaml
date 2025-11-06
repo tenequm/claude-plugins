@@ -3,3 +3,4 @@ packages:
   - 'chrome-extension-wxt'
   - 'skill-finder'
   - 'cloudflare-workers'
+  - 'skill-factory'
