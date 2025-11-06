@@ -17,11 +17,11 @@ Install skills as plugins using Claude Code's marketplace system:
 
 ```bash
 # 1. Add this marketplace
-/plugin marketplace add tenequm/claude-skills
+/plugin marketplace add tenequm/claude-plugins
 
 # 2. Install specific skills
-/plugin install gh-cli@claude-skills
-/plugin install chrome-extension-wxt@claude-skills
+/plugin install gh-cli@tenequm-plugins
+/plugin install chrome-extension-wxt@tenequm-plugins
 
 # Or browse and install interactively
 /plugin
@@ -33,11 +33,11 @@ If you prefer to manage skills manually:
 
 ```bash
 # Clone this repo to your preferred location
-git clone https://github.com/tenequm/claude-skills.git
+git clone https://github.com/tenequm/claude-plugins.git
 
 # Symlink skills to Claude's skills directory
-ln -s /path/to/claude-skills/chrome-extension-wxt ~/.claude/skills/chrome-extension-wxt
-ln -s /path/to/claude-skills/gh-cli ~/.claude/skills/gh-cli
+ln -s /path/to/claude-plugins/chrome-extension-wxt/skill ~/.claude/skills/chrome-extension-wxt
+ln -s /path/to/claude-plugins/gh-cli/skill ~/.claude/skills/gh-cli
 ```
 
 ## For Contributors
@@ -59,12 +59,14 @@ When you modify a skill, create a changeset to document the change:
 
 ```bash
 # 1. Make your changes to a skill
-vim gh-cli/SKILL.md
+vim gh-cli/skill/SKILL.md
 
 # 2. Validate your changes
-pnpm validate gh-cli
+cd gh-cli
+pnpm validate
 
 # 3. Create a changeset
+cd ..
 pnpm changeset
 # Follow prompts:
 #   - Select which skill(s) changed
@@ -83,7 +85,7 @@ git push
 1. GitHub Actions detects your changeset
 2. A "Version Packages" PR is created/updated automatically
 3. When merged: versions bump, marketplace.json updates, git tags created
-4. Users can install: `/plugin marketplace update claude-skills`
+4. Users can install: `/plugin marketplace update tenequm-plugins`
 
 ### Versioning Guidelines
 
@@ -95,10 +97,12 @@ git push
 
 ```bash
 # Validate specific skill
-pnpm validate gh-cli
+cd gh-cli
+pnpm validate
 
-# Validate all skills
-pnpm validate:all
+# Validate all skills in workspace
+cd ..
+pnpm validate
 ```
 
 ### Creating New Skills

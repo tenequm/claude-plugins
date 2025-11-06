@@ -1,4 +1,3 @@
 packages:
-  # Explicit list - add new skills manually for safety and clarity
   - 'gh-cli'
   - 'chrome-extension-wxt'

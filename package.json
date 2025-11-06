@@ -1,24 +1,20 @@
 {
-  "name": "claude-skills",
-  "version": "0.0.0",
+  "name": "tenequm-plugins",
   "private": true,
   "type": "module",
   "scripts": {
-    "changeset": "changeset",
-    "changeset:add": "changeset",
-    "changeset:version": "changeset version && node scripts/sync-marketplace.mjs",
-    "changeset:status": "changeset status",
-    "release": "node scripts/sync-marketplace.mjs && changeset tag",
-    "validate": "python3 .claude/skills/skill-creator/scripts/quick_validate.py",
-    "validate:all": "node scripts/validate-all.mjs"
+    "sync-marketplace": "bash scripts/sync-marketplace.sh",
+    "validate": "pnpm -r validate && pnpm claude plugin validate .",
+    "changeset:version": "changeset version && pnpm sync-marketplace",
+    "release": "pnpm sync-marketplace && pnpm validate && changeset tag"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-code": "^2.0.34",
     "@changesets/changelog-github": "^0.5.1",
     "@changesets/cli": "^2.29.7"
   },
   "engines": {
-    "node": ">=24.0.0",
-    "pnpm": ">=10.0.0"
+    "node": ">=24.0.0"
   },
   "packageManager": "pnpm@10.20.0"
 }

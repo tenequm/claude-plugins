@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: validate-skills
         name: Validate skill structure
-        entry: scripts/validate-skills.sh
+        entry: pnpm validate
         language: system
         pass_filenames: false
         files: '(SKILL\.md|references/.*\.md)$'

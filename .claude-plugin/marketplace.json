@@ -1,49 +1,30 @@
 {
-  "name": "claude-skills",
+  "name": "tenequm-plugins",
   "owner": {
-    "name": "tenequm",
+    "name": "Misha Kolesnik",
     "email": "misha@kolesnik.io"
+  },
+  "metadata": {
+    "description": "Personal collection of Claude Code plugins for various development tasks."
   },
   "plugins": [
     {
       "name": "gh-cli",
-      "source": "./gh-cli",
-      "description": "GitHub CLI for remote repository analysis, file fetching, codebase comparison, and discovering trending code/repos. Use when analyzing repos without cloning, comparing codebases, or searching for popular GitHub projects.",
+      "source": "./",
+      "description": "Skill: Full GitHub CLI capabilities for repos & code",
       "version": "1.0.1",
-      "author": {
-        "name": "tenequm"
-      },
-      "category": "developer-tools",
-      "keywords": [
-        "github",
-        "cli",
-        "repository",
-        "analysis",
-        "gh"
-      ],
-      "license": "MIT",
-      "repository": "https://github.com/tenequm/claude-skills",
-      "strict": false
+      "skills": [
+        "./gh-cli/skill"
+      ]
     },
     {
       "name": "chrome-extension-wxt",
-      "source": "./chrome-extension-wxt",
-      "description": "Build Chrome extensions using WXT framework with TypeScript, React, Vue, or Svelte. Use when creating browser extensions, developing cross-browser add-ons, or working with Chrome Web Store projects.",
+      "source": "./",
+      "description": "Skill: Build Chrome extensions with WXT framework",
       "version": "1.0.0",
-      "author": {
-        "name": "tenequm"
-      },
-      "category": "developer-tools",
-      "keywords": [
-        "chrome",
-        "extension",
-        "wxt",
-        "browser",
-        "webextension"
-      ],
-      "license": "MIT",
-      "repository": "https://github.com/tenequm/claude-skills",
-      "strict": false
+      "skills": [
+        "./chrome-extension-wxt/skill"
+      ]
     }
   ]
 }

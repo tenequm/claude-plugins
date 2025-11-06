@@ -23,28 +23,59 @@ You are assisting with maintaining a public repository of Claude Code skills. Th
 **Repository Structure:**
 ```
 [REPO_PATH]/
-├── .claude/                       # Repository meta (not published as skill)
-│   ├── CLAUDE.md                 # This file - instructions for Claude
+├── .changeset/                   # Changesets for version management
+│   └── config.json               # Changesets configuration
+├── .claude/                      # Repository meta (not published)
+│   ├── CLAUDE.md                # This file - instructions for Claude
 │   └── skills/
-│       └── skill-creator/        # Official Anthropic skill-creator tool
-├── .git/                         # Git repository
-├── .gitignore                    # Standard ignores
-├── LICENSE                       # MIT License
-├── README.md                     # Public-facing documentation
-└── [skill-name]/                 # Individual skills (root level)
-    ├── SKILL.md                  # Main skill file (frontmatter + overview)
-    ├── references/               # Progressive disclosure content
-    │   ├── *.md                  # Detailed guides
-    ├── scripts/                  # Helper scripts (optional)
-    └── assets/                   # Templates, examples (optional)
+│       └── skill-creator/       # Official Anthropic skill-creator tool
+├── .claude-plugin/              # Plugin marketplace configuration
+│   └── marketplace.json         # Plugin registry (auto-synced)
+├── .github/                     # GitHub Actions workflows
+│   └── workflows/
+│       ├── release.yml          # Automated releases with Changesets
+│       └── validate.yml         # Pre-commit validation
+├── .git/                        # Git repository
+├── .gitignore                   # Standard ignores
+├── .pre-commit-config.yaml      # Pre-commit hooks configuration
+├── LICENSE                      # MIT License
+├── README.md                    # Public-facing documentation
+├── package.json                 # Root package (pnpm workspace)
+├── pnpm-lock.yaml              # Lockfile
+├── pnpm-workspace.yaml         # Workspace configuration
+├── scripts/                     # Build and release scripts
+│   └── sync-marketplace.sh     # Sync versions to marketplace.json
+└── [plugin-name]/              # Individual plugins (root level, pnpm workspace packages)
+    ├── package.json            # Plugin package with version
+    └── skill/                  # Skill content directory
+        ├── SKILL.md            # Main skill file (frontmatter + overview)
+        ├── references/         # Progressive disclosure content
+        │   └── *.md            # Detailed guides
+        ├── scripts/            # Helper scripts (optional)
+        └── assets/             # Templates, examples (optional)
 ```
 
-**Current Skills:**
+**Current Plugins:**
 1. **chrome-extension-wxt** - Chrome extension development with WXT framework
    - React 19 integration
    - Chrome 140+ APIs
    - Modern UI libraries (shadcn/ui, Mantine)
    - Quality: 10/10 ✅
+
+2. **gh-cli** - GitHub CLI for remote repository operations
+   - Remote repository analysis
+   - File fetching without cloning
+   - Codebase comparison
+   - Trending repositories discovery
+   - Quality: 10/10 ✅
+
+**Package Management:**
+This repository uses pnpm workspaces and Changesets for version management:
+- Each plugin is a pnpm workspace package with its own `package.json`
+- Plugin versions are managed via Changesets (`.changeset/` directory)
+- The `.claude-plugin/marketplace.json` is auto-synced from plugin package versions
+- GitHub Actions automatically creates version PRs and releases
+- Each plugin contains a `skill/` subdirectory with the actual skill content
 
 </repository_overview>
 
@@ -88,42 +119,66 @@ You are assisting with maintaining a public repository of Claude Code skills. Th
 The official Anthropic skill-creator is available at:
 `[REPO_PATH]/.claude/skills/skill-creator/`
 
-#### Initialize New Skill
+#### Initialize New Plugin
 
 ```bash
-# Create new skill in the repository
+# 1. Create plugin directory
+mkdir -p [REPO_PATH]/[plugin-name]/skill
+
+# 2. Initialize skill structure
 python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/init_skill.py \
-  [skill-name] \
-  --path [REPO_PATH]
+  [plugin-name] \
+  --path [REPO_PATH]/[plugin-name]/skill
 
 # This creates:
-# [REPO_PATH]/[skill-name]/
+# [REPO_PATH]/[plugin-name]/skill/
 # ├── SKILL.md
 # ├── references/
 # ├── scripts/
 # └── assets/
+
+# 3. Create package.json for the plugin
+cat > [REPO_PATH]/[plugin-name]/package.json <<EOF
+{
+  "name": "[plugin-name]-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Your plugin description here",
+  "scripts": {
+    "validate": "python3 ../../../.claude/skills/skill-creator/scripts/quick_validate.py ./skill"
+  }
+}
+EOF
+
+# 4. Add to pnpm workspace
+echo "  - '[plugin-name]'" >> [REPO_PATH]/pnpm-workspace.yaml
+
+# 5. Add to marketplace.json
+# Edit .claude-plugin/marketplace.json and add the plugin entry:
+# {
+#   "name": "[plugin-name]",
+#   "source": "./",
+#   "description": "Your description",
+#   "version": "1.0.0",
+#   "skills": ["./[plugin-name]/skill"]
+# }
 ```
 
-#### Validate Skill
+#### Validate Plugin
 
 ```bash
 # Validate skill structure and best practices
 python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/quick_validate.py \
-  [REPO_PATH]/[skill-name]
+  [REPO_PATH]/[plugin-name]/skill
+
+# Or use pnpm from the plugin directory
+cd [REPO_PATH]/[plugin-name]
+pnpm validate
 
 # Output shows:
 # - Skill validity ✅ or ❌
 # - Best practices score (aim for 10.0/10)
 # - Specific issues to fix
-```
-
-#### Package Skill (Optional)
-
-```bash
-# Create distributable package
-python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/package_skill.py \
-  [REPO_PATH]/[skill-name] \
-  --output ~/Downloads/
 ```
 
 ### skill-creator Script Details
@@ -167,6 +222,65 @@ Validates skill against Anthropic best practices.
 Creates .zip package for distribution.
 
 **Output:** `skill-name-vX.Y.Z.zip`
+
+### Release Workflow with Changesets
+
+This repository uses Changesets for version management and automated releases.
+
+#### Creating a Changeset
+
+When you modify a skill, create a changeset to document the change:
+
+```bash
+# 1. Make your changes to a plugin's skill
+vim [plugin-name]/skill/SKILL.md
+
+# 2. Validate your changes
+cd [plugin-name]
+pnpm validate
+
+# 3. Create a changeset
+cd [REPO_PATH]
+pnpm changeset
+
+# Follow the interactive prompts:
+# - Select which plugin(s) changed (space to select, enter to confirm)
+# - Choose bump type (patch/minor/major)
+# - Write a summary of changes
+
+# This creates a markdown file in .changeset/
+```
+
+#### Version Bump Guidelines
+
+- **Patch (1.0.x)**: Bug fixes, typos, link corrections, small improvements
+- **Minor (1.x.0)**: New features, sections, examples, significant additions
+- **Major (x.0.0)**: Breaking changes (skill structure changes, removed features)
+
+#### What Happens Next
+
+1. Commit your changes and the changeset file
+2. Push to GitHub
+3. GitHub Actions detects the changeset
+4. A "Version Packages" PR is automatically created or updated
+5. When the PR is merged:
+   - Plugin versions are bumped in `package.json`
+   - `marketplace.json` is automatically synced via `sync-marketplace.sh`
+   - Git tags are created
+   - GitHub releases are published
+
+#### Manual Release Commands
+
+```bash
+# Sync marketplace.json with skill versions
+pnpm sync-marketplace
+
+# Validate all skills
+pnpm validate
+
+# Create git tags from changesets (used in CI)
+pnpm release
+```
 
 </creating_new_skills>
 
@@ -319,21 +433,28 @@ Before committing a new skill:
 
 ```bash
 # 1. Validate structure
-python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/quick_validate.py \
-  [REPO_PATH]/[skill-name]
+cd [REPO_PATH]/[plugin-name]
+pnpm validate
 
 # Expected: ✅ Skill is valid! Score: 10.0/10
 
 # 2. Check file sizes
-du -sh [REPO_PATH]/[skill-name]/
+du -sh [REPO_PATH]/[plugin-name]/skill/
 # SKILL.md should be 5-20KB
 # references/*.md can be 10-50KB each
 
-# 3. Test skill with Claude
+# 3. Validate all plugins in workspace
+cd [REPO_PATH]
+pnpm validate
+
+# 4. Test skill with Claude
 # Load the skill and test with real queries
 
-# 4. Update README.md
-# Add skill to the list with description
+# 5. Update README.md
+# Add plugin to the list with description
+
+# 6. Update .claude-plugin/marketplace.json
+# Add the plugin entry to the plugins array
 ```
 
 </quality_standards>
@@ -355,12 +476,34 @@ du -sh [REPO_PATH]/[skill-name]/
 - Integration with common tools
 ```
 
-2. **Initialize Skill**
+2. **Initialize Plugin**
 ```bash
+# Create plugin directory structure
+mkdir -p [REPO_PATH]/hono-api/skill
+
+# Initialize skill
 python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/init_skill.py \
   hono-api \
-  --path [REPO_PATH] \
+  --path [REPO_PATH]/hono-api/skill \
   --description "Build fast APIs with Hono framework"
+
+# Create package.json
+cat > [REPO_PATH]/hono-api/package.json <<EOF
+{
+  "name": "hono-api-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build fast APIs with Hono framework",
+  "scripts": {
+    "validate": "python3 ../../../.claude/skills/skill-creator/scripts/quick_validate.py ./skill"
+  }
+}
+EOF
+
+# Add to pnpm workspace
+echo "  - 'hono-api'" >> [REPO_PATH]/pnpm-workspace.yaml
+
+# Add to marketplace.json (manually edit .claude-plugin/marketplace.json)
 ```
 
 3. **Create Content**
@@ -383,20 +526,30 @@ python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/init_skill.py \
 
 4. **Validate**
 ```bash
-python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/quick_validate.py \
-  [REPO_PATH]/hono-api
+cd [REPO_PATH]/hono-api
+pnpm validate
 
 # Fix any issues until: ✅ Score: 10.0/10
 ```
 
-5. **Update README**
-- Update [REPO_PATH]/README.md with new skill entry
+5. **Update Documentation**
+- Update [REPO_PATH]/README.md with new plugin entry
+- Add entry to [REPO_PATH]/.claude-plugin/marketplace.json
 
-6. **Commit**
+6. **Create Changeset**
 ```bash
 cd [REPO_PATH]
-git add hono-api/ README.md
-git commit -m "feat: add hono-api skill
+pnpm changeset
+# Select hono-api
+# Choose "minor" (new feature)
+# Write: "Initial release of Hono API plugin"
+```
+
+7. **Commit**
+```bash
+cd [REPO_PATH]
+git add hono-api/ README.md .claude-plugin/marketplace.json .changeset/ pnpm-workspace.yaml
+git commit -m "feat: add hono-api plugin
 
 - Complete Hono framework guide
 - API development patterns
@@ -490,7 +643,7 @@ git commit -m "feat: add solana-development skill
 
 Sources: Solana docs, Anchor v0.30.x, verified Nov 2025"
 
-# Updating existing skill
+# Updating existing plugin
 git commit -m "update: chrome-extension-wxt with Chrome 143 APIs
 
 - Add Chrome 143 features reference
@@ -633,20 +786,40 @@ git commit -m "fix: correct TypeScript syntax in hono-api examples
 
 ### Repository-Specific Rules
 
-1. **All skills at root level** (not nested in subdirectories)
+1. **Plugin structure** - Each plugin is a directory with `package.json` and `skill/` subdirectory
    ```
-   ✅ [REPO_PATH]/skill-name/
-   ❌ [REPO_PATH]/category/skill-name/
+   ✅ [REPO_PATH]/hono-api/
+       ├── package.json
+       └── skill/
+   ❌ [REPO_PATH]/hono-api-skill/SKILL.md
    ```
 
-2. **Quality over quantity** - Better to have 5 perfect skills than 20 mediocre ones
+2. **All plugins at root level** (not nested in subdirectories)
+   ```
+   ✅ [REPO_PATH]/plugin-name/
+   ❌ [REPO_PATH]/category/plugin-name/
+   ```
 
-3. **Public repository** - All content will be public on GitHub
+3. **Each plugin must be a pnpm workspace package**
+   - Must have `package.json` with name (ending in `-skill`), version, and validate script
+   - Must be listed in `pnpm-workspace.yaml`
+   - Must be listed in `.claude-plugin/marketplace.json` with correct skill path
+   - Skill content goes in `skill/` subdirectory
+
+4. **Version management via Changesets**
+   - All version changes must go through changesets
+   - Never manually edit version numbers in `package.json`
+   - Use `pnpm changeset` to document changes
+   - Sync script reads version from plugin's `package.json`
+
+5. **Quality over quantity** - Better to have 5 perfect plugins than 20 mediocre ones
+
+6. **Public repository** - All content will be public on GitHub
    - No proprietary code
    - No sensitive information
    - Attribution to sources
 
-4. **Maintenance** - Keep skills current
+7. **Maintenance** - Keep plugins current
    - Update when major versions release
    - Add notes about deprecated features
    - Remove outdated patterns
