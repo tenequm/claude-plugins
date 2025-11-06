@@ -141,7 +141,7 @@ python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/init_skill.py \
 cat > [REPO_PATH]/[plugin-name]/package.json <<EOF
 {
   "name": "[plugin-name]-skill",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "private": true,
   "description": "Your plugin description here",
   "scripts": {
@@ -159,9 +159,10 @@ echo "  - '[plugin-name]'" >> [REPO_PATH]/pnpm-workspace.yaml
 #   "name": "[plugin-name]",
 #   "source": "./",
 #   "description": "Your description",
-#   "version": "1.0.0",
+#   "version": "0.0.0",
 #   "skills": ["./[plugin-name]/skill"]
 # }
+# Note: This will be auto-synced to 0.1.0 after changeset version bump
 ```
 
 #### Validate Plugin
@@ -222,6 +223,110 @@ Validates skill against Anthropic best practices.
 Creates .zip package for distribution.
 
 **Output:** `skill-name-vX.Y.Z.zip`
+
+### Initial Version Best Practices
+
+**CRITICAL:** Always start new plugins at version `0.0.0` with a `minor` changeset bump.
+
+#### Why Start at 0.0.0?
+
+Following [Semantic Versioning](https://semver.org/) conventions:
+- **Version 0.x.x** signals "initial development phase" where the API may change
+- **Version 1.0.0** should be reserved for production-ready releases with stable APIs
+- Starting at `0.0.0` with a minor bump results in `0.1.0` as the first published version
+- This approach is recommended by Changesets maintainers ([Discussion #819](https://github.com/changesets/changesets/discussions/819))
+
+#### Correct Initial Release Workflow
+
+```bash
+# Step 1: Create plugin with version 0.0.0
+cat > [REPO_PATH]/[plugin-name]/package.json <<EOF
+{
+  "name": "[plugin-name]-skill",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Your plugin description",
+  "scripts": {
+    "validate": "python3 ../../../.claude/skills/skill-creator/scripts/quick_validate.py ./skill"
+  }
+}
+EOF
+
+# Step 2: Create changeset with MINOR bump
+cd [REPO_PATH]
+pnpm changeset
+# Select the new plugin
+# Choose "minor" (will bump 0.0.0 → 0.1.0)
+# Write: "Initial release of [plugin-name]"
+
+# Step 3: Commit everything together
+git add [plugin-name]/ .changeset/ pnpm-workspace.yaml README.md .claude-plugin/marketplace.json
+git commit -m "feat: add [plugin-name] plugin"
+
+# Result: When released, version will be 0.1.0
+```
+
+#### Version Progression
+
+```
+0.0.0  (in package.json initially)
+  ↓ minor changeset
+0.1.0  (first published version - initial development)
+  ↓ patch changesets (bug fixes)
+0.1.1, 0.1.2, ...
+  ↓ minor changesets (new features)
+0.2.0, 0.3.0, ...
+  ↓ major changeset (when API is stable and production-ready)
+1.0.0  (first stable release with backward compatibility guarantees)
+```
+
+#### Historical Mistakes to Avoid
+
+**❌ WRONG: Starting at 1.0.0 with major bump**
+```bash
+# package.json: "version": "1.0.0"
+# Changeset: major bump
+# Result: 2.0.0 as first published version
+# Problem: Implies there was a 1.x.x version with breaking changes
+```
+
+**❌ WRONG: Starting at 1.0.0 with minor bump**
+```bash
+# package.json: "version": "1.0.0"
+# Changeset: minor bump
+# Result: 1.1.0 as first published version
+# Problem: Implies version 1.0.0 existed and this adds features to it
+```
+
+**✅ CORRECT: Starting at 0.0.0 with minor bump**
+```bash
+# package.json: "version": "0.0.0"
+# Changeset: minor bump
+# Result: 0.1.0 as first published version
+# Benefit: Clear signal of initial development phase
+```
+
+#### When to Graduate to 1.0.0
+
+Bump to version 1.0.0 when your plugin:
+- Has a stable, well-tested API
+- Is production-ready
+- Has comprehensive documentation
+- Will maintain backward compatibility going forward
+
+Use a **major** changeset to go from `0.x.x` → `1.0.0`:
+```bash
+pnpm changeset
+# Select the plugin
+# Choose "major" (e.g., 0.5.3 → 1.0.0)
+# Write: "Stable release - production ready with backward compatibility guarantees"
+```
+
+#### Reference
+
+- **Changesets Official Discussion**: [Initial Version? #819](https://github.com/changesets/changesets/discussions/819)
+- **Semantic Versioning Spec**: [semver.org](https://semver.org/)
+- **Key Quote from Changesets Maintainer**: "it's probably better to start with `0.0.0`"
 
 ### Release Workflow with Changesets
 
@@ -487,11 +592,11 @@ python3 [REPO_PATH]/.claude/skills/skill-creator/scripts/init_skill.py \
   --path [REPO_PATH]/hono-api/skill \
   --description "Build fast APIs with Hono framework"
 
-# Create package.json
+# Create package.json with version 0.0.0 (initial development)
 cat > [REPO_PATH]/hono-api/package.json <<EOF
 {
   "name": "hono-api-skill",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "private": true,
   "description": "Build fast APIs with Hono framework",
   "scripts": {
@@ -541,7 +646,7 @@ pnpm validate
 cd [REPO_PATH]
 pnpm changeset
 # Select hono-api
-# Choose "minor" (new feature)
+# Choose "minor" (will bump 0.0.0 → 0.1.0 for initial release)
 # Write: "Initial release of Hono API plugin"
 ```
 
