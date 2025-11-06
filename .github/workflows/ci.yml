@@ -1,35 +1,45 @@
-name: Release
+name: Continuous Integration
 
 on:
   push:
     branches:
       - main
+  pull_request:
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  release:
-    name: Release
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js 24 LTS
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: 'pnpm'
+      - run: pnpm install
+      - run: uvx pre-commit run --all-files
 
-      - name: Install dependencies
-        run: pnpm install
+  release:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      - run: pnpm install
 
       - name: Create Release Pull Request or Tag
         id: changesets
