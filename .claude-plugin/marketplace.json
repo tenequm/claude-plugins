@@ -30,7 +30,7 @@
       "name": "cloudflare-workers",
       "source": "./",
       "description": "Skill: Rapid development with Cloudflare Workers - build and deploy serverless applications",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "skills": [
         "./cloudflare-workers/skill"
       ]
