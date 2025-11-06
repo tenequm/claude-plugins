@@ -12,7 +12,7 @@
       "name": "gh-cli",
       "source": "./",
       "description": "Skill: Full GitHub CLI capabilities for repos & code",
-      "version": "1.0.2",
+      "version": "1.1.0",
       "skills": [
         "./gh-cli/skill"
       ]
