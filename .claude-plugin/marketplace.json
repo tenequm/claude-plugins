@@ -25,6 +25,15 @@
       "skills": [
         "./chrome-extension-wxt/skill"
       ]
+    },
+    {
+      "name": "skill-finder",
+      "source": "./",
+      "description": "Skill: Find and evaluate Claude skills using semantic search and quality assessment",
+      "version": "1.0.0",
+      "skills": [
+        "./skill-finder/skill"
+      ]
     }
   ]
 }

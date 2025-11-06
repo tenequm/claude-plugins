@@ -1,3 +1,4 @@
 packages:
   - 'gh-cli'
   - 'chrome-extension-wxt'
+  - 'skill-finder'
