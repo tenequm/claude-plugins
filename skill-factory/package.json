@@ -1,6 +1,6 @@
 {
   "name": "skill-factory-skill",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Autonomous skill creation agent that analyzes requests, automatically selects the best creation method, ensures quality compliance, and delivers production-ready skills without user decision-making",
   "scripts": {
