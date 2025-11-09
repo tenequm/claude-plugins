@@ -48,7 +48,7 @@
       "name": "skill-factory",
       "source": "./",
       "description": "Skill: Autonomous skill creation with automatic quality assurance - analyzes requests, selects optimal creation method, and delivers production-ready skills",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "skills": [
         "./skill-factory/skill"
       ]
@@ -57,7 +57,7 @@
       "name": "uv-ruff-python-tools",
       "source": "./",
       "description": "Skill: Modern Python development with uv (10-100x faster package manager) and ruff (extremely fast linter/formatter) - Astral's fast tooling suite",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "skills": [
         "./uv-ruff-python-tools/skill"
       ]
