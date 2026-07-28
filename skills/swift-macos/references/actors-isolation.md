@@ -426,3 +426,70 @@ actor AudioRecorder {
 ```
 
 The "before" equivalent required `nonisolated(unsafe) var` copies of every piece of cleanup state, kept in sync with the actor-isolated originals.
+
+## Reentrancy: a `Bool` flag does not make async start/stop safe
+
+The classic shape - an actor with `start()` and `stop()` guarded by a `stopped` flag - is unsound the moment `start()` contains an `await`. Actors are reentrant: `stop()` runs *during* the suspension, flips the flag, and the resumed `start()` walks past it and finishes building a live object that no caller holds a reference to.
+
+Observed failure: a `start()` suspended for ~12 s inside a slow `SCShareableContent` query. `stop()` arrived mid-suspension, set `stopped = true`, and returned. `start()` resumed, checked nothing further, and built a running recorder. It stayed alive for hours dropping every buffer at a `guard !stopped` in the output callback, never finalized the writer, and left a zero-byte file plus a UI stuck in "recording".
+
+```swift
+// WRONG - one flag read, checked before the await that matters
+actor Recorder {
+    private var stopped = false
+    func start() async throws {
+        guard !stopped else { return }
+        let content = try await SCShareableContent.current   // stop() lands here
+        stream = try buildStream(content)                     // built anyway
+        try await stream?.startCapture()
+    }
+}
+```
+
+Two rules fix it:
+
+**Re-check cancellation after every await, not once at the top.**
+
+```swift
+actor Recorder {
+    private enum State { case idle, starting, running, stopping }
+    private var state: State = .idle
+    private var stream: SCStream?
+
+    func start() async throws {
+        guard state == .idle else { throw RecorderError.alreadyRunning }
+        state = .starting
+
+        let content = try await SCShareableContent.current
+        guard state == .starting else {            // re-check
+            try await cleanupPartialStart()
+            throw RecorderError.cancelled
+        }
+
+        let built = try buildStream(content)
+        guard state == .starting else {            // re-check again
+            try? await built.stopCapture()
+            throw RecorderError.cancelled
+        }
+
+        stream = built
+        try await built.startCapture()
+        state = .running
+    }
+}
+```
+
+**Make cleanup idempotent by taking ownership before awaiting.** Copy the resource to a local and nil the actor field *before* any suspension, so an interleaved `stop()` cannot double-free or act on a half-torn-down object:
+
+```swift
+func stop() async {
+    guard let stream else { state = .idle; return }
+    self.stream = nil          // take ownership BEFORE the await
+    state = .stopping
+    try? await stream.stopCapture()
+    await finalizeWriter()
+    state = .idle
+}
+```
+
+Distinct error cases (`.cancelled` vs `.alreadyRunning`) are worth the extra enum - they let tests assert the exact interleaving outcome instead of just "it threw". Delete partial artifacts on a failed start; a zero-byte output file is worse than no file.

@@ -634,3 +634,40 @@ ProcessInfo.processInfo.endActivity(activity)
 ```
 
 Use `.userInitiated` for operations the user started. The system will not idle-sleep while the activity is active, but the user can still manually put the machine to sleep.
+
+## Trap: "is the mic in use?" latches on with a system-wide property
+
+`kAudioDevicePropertyDeviceIsRunningSomewhere` on the default input device looks like the way to auto-trigger recording when another app starts using the microphone. It is not: the property is system-wide and includes **your** process. Once your app opens the mic in response to the trigger, the property stays `true` after the other app stops, so the trigger never releases and auto-stop never fires.
+
+Use the per-process CoreAudio APIs (macOS 14.2+) and exclude yourself:
+
+```swift
+import CoreAudio
+
+func otherProcessIsUsingInput() -> Bool {
+    var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyProcessObjectList,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(
+        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr else { return false }
+
+    var processes = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+    guard AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &processes) == noErr else { return false }
+
+    let myPID = ProcessInfo.processInfo.processIdentifier
+    for process in processes {
+        guard pid(for: process) != myPID else { continue }
+        if isRunningInput(process) { return true }   // kAudioProcessPropertyIsRunningInput
+    }
+    return false
+}
+```
+
+Two caveats before designing around this:
+
+- **App Sandbox**: these low-level per-process APIs are not reliably available under sandboxing, which makes a mic-activity auto-trigger a Mac App Store blocker. Plan the feature as Developer ID-only, or provide a manual path.
+- Poll on a timer or install a property listener on the process list; there is no single "someone started using the mic" notification.

@@ -354,8 +354,9 @@ func brokenTest() { /* ... */ }
 @Test(.bug("https://github.com/org/repo/issues/123"))
 func regressionTest() { /* ... */ }
 
-// Time limit
-@Test(.timeLimit(.seconds(30)))
+// Time limit - minutes only. `.seconds(_:)` is @available(*, unavailable):
+// "Time limit must be specified in minutes"
+@Test(.timeLimit(.minutes(1)))
 func quickTest() async throws { /* ... */ }
 
 // Serial execution (see Parallelism Pitfalls above)
@@ -367,7 +368,7 @@ struct HardwareTests { /* ... */ }
 
 A handful of workflow wins scattered across Swift Testing 6.2 (Xcode 26) and 6.3 (Xcode 26.4). Version gate noted per feature — they did not all ship at the same time.
 
-### Warning-severity issues (non-failing) — Swift 6.2
+### Warning-severity issues (non-failing) — Swift 6.3
 
 ```swift
 @Test func parsesPayload() throws {
@@ -380,7 +381,7 @@ A handful of workflow wins scattered across Swift Testing 6.2 (Xcode 26) and 6.3
 }
 ```
 
-Use for soft expectations (deprecations, perf regressions short of a hard bar, drift warnings). Shipped in [swift-testing 6.2](https://github.com/swiftlang/swift-testing/releases/tag/swift-6.2-RELEASE) (ST-0013).
+Use for soft expectations (deprecations, perf regressions short of a hard bar, drift warnings). `Issue.Severity` is annotated `@Available(Swift, introduced: 6.3)` / `@Available(Xcode, introduced: 26.4)` in [Issue.swift](https://github.com/swiftlang/swift-testing/blob/main/Sources/Testing/Issues/Issue.swift) - the ST-0013 design landed earlier, but the shipping gate is 6.3, not 6.2.
 
 ### Exit tests: `processExitsWith:` — Swift 6.2
 
@@ -397,7 +398,7 @@ The `#expect(exitsWith:)` spelling was renamed to `#expect(processExitsWith:)` i
 
 ### `Attachment.record(...)` — Swift 6.2 (rename), Swift 6.3 (AppKit/CoreImage/UIKit images)
 
-The static `Attachment.record(_:named:...)` replaces the old instance `.attach()` method (rename shipped in [PR #1032](https://github.com/swiftlang/swift-testing/pull/1032), Swift 6.2). `CGImage` support landed in Swift 6.2 as well; the `NSImage` (AppKit), `CIImage` (CoreImage), `UIImage` (UIKit) overlays shipped in Swift 6.3 (ST-0014).
+The static `Attachment.record(_:named:...)` replaces the old instance `.attach()` method (rename shipped in [PR #1032](https://github.com/swiftlang/swift-testing/pull/1032), Swift 6.2). **All** image attachment support - `CGImage` included, not just the `NSImage`/`CIImage`/`UIImage` overlays - is gated at Swift 6.3 / Xcode 26.4: every initializer in [Attachment+AttachableAsImage.swift](https://github.com/swiftlang/swift-testing/blob/main/Sources/Testing/Attachments/Images/Attachment%2BAttachableAsImage.swift) carries `@Available(Swift, introduced: 6.3)` (ST-0014).
 
 ```swift
 // Swift 6.2+ — bytes / CGImage
@@ -442,9 +443,11 @@ print(loc.filePath)   // String
 
 (ST-0020, PR #1538.)
 
-### ST-0021 XCTest / Swift Testing interop — accepted, not yet shipped
+### ST-0021 XCTest / Swift Testing interop — Implemented in Swift 6.4
 
-Proposal status is `Accepted`, not `Implemented`. Only fallback-event-handler plumbing landed in swift-testing 6.3 (PRs #1369, #1503, #1543). The full interop-mode semantics and SwiftPM integration are not yet marked as shipped — don't rely on the `SWIFT_TESTING_XCTEST_INTEROP_MODE` surface yet. Source: https://github.com/swiftlang/swift-evolution/blob/main/proposals/testing/0021-targeted-interoperability-swift-testing-and-xctest.md
+Proposal status is now **Implemented (Swift 6.4)**, and `SWIFT_TESTING_XCTEST_INTEROP_MODE` is a documented environment variable accepting `none`, `limited`, `complete`, or `strict` — it controls how XCTest assertion failures recorded during a Swift Testing test are handled.
+
+Practical gate is unchanged for this skill's pinned toolchain: on Swift 6.3 only the fallback-event-handler plumbing is present (PRs #1369, #1503, #1543), so don't rely on interop-mode semantics until you are on a 6.4 toolchain. Sources: [ST-0021](https://github.com/swiftlang/swift-evolution/blob/main/proposals/testing/0021-targeted-interoperability-swift-testing-and-xctest.md), [EnvironmentVariables.md](https://github.com/swiftlang/swift-testing/blob/main/Documentation/EnvironmentVariables.md)
 
 ## UI Testing (XCTest-based)
 
@@ -503,3 +506,83 @@ Migration checklist:
 7. `XCTUnwrap(x)` -> `try #require(x)`
 8. `setUp/tearDown` -> `init/deinit` or test-local setup
 9. `measure { }` -> Use Instruments (no direct equivalent yet)
+
+## Confirmations: testing callbacks and delegates
+
+`#expect` cannot express "this callback fired exactly N times". `confirmation` can, and it is the right tool for the delegate-driven APIs common in macOS apps - `SCStreamOutput`, `AVAudioEngine` taps, `NotificationCenter` observers:
+
+```swift
+@Test func streamDeliversBuffers() async throws {
+    await confirmation("audio buffers delivered", expectedCount: 3) { delivered in
+        let output = StubStreamOutput { _ in delivered() }
+        try await runCapture(feeding: output, frames: 3)
+    }
+}
+```
+
+The suite fails if the count does not match when the closure returns. Ranges work for "at least once, unbounded" cases:
+
+```swift
+await confirmation(expectedCount: 1...) { fired in
+    monitor.onChange = { _ in fired() }
+    try await monitor.pump()
+}
+```
+
+Use `expectedCount: 0` to assert a callback never fires - stronger than asserting on final state, because it catches a spurious extra invocation.
+
+## `withKnownIssue` instead of disabling
+
+A test that documents a real bug should keep running. `.disabled()` hides it; `withKnownIssue` records the failure without failing the suite, and **fails loudly if the issue stops reproducing** - so the test tells you when the bug is fixed:
+
+```swift
+@Test func handlesMalformedHeader() throws {
+    withKnownIssue("parser drops the extension bit - FB12345678") {
+        let parsed = try Parser.parse(malformedFixture)
+        #expect(parsed.extensionBit == true)
+    }
+}
+
+// Intermittent failures: don't fail when it happens to pass
+withKnownIssue(isIntermittent: true) { try flakyPath() }
+```
+
+## `swift test` command-line surface
+
+Beyond `--parallel`:
+
+```bash
+swift test --list-tests                       # enumerate without running
+swift test --filter ProjectTests              # regex over suite/test names
+swift test --disable-xctest                   # run only Swift Testing
+swift test --enable-xctest                    # run only XCTest
+swift test --attachments-path ./test-output   # write Attachment.record(...) payloads here
+```
+
+`--attachments-path` is what makes attachments useful in CI - without it, recorded attachments have nowhere to land.
+
+### Trap: `swift test` cannot run tests under Command Line Tools alone
+
+With only the Command Line Tools installed (no full Xcode), tests **compile and link but never execute** - there is no `xctest` runner binary. Both XCTest and Swift Testing suites report nothing, which reads as "all tests passed" in a CI log. A placeholder test can sit "green" for weeks without ever having run.
+
+```bash
+xcode-select -p                              # /Library/Developer/CommandLineTools == the problem
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+
+Standardize on `swift test --disable-xctest` in your Justfile/Makefile so Swift Testing runs without needing the XCTest runner at all, and assert on a known-nonzero test count in CI rather than trusting a clean exit code.
+
+## Trap: menu-bar-only apps are invisible to UI automation
+
+An `LSUIElement` app does not appear in the accessibility registry the way a regular app does, so harnesses that enumerate running or installed applications through Launch Services or the accessibility APIs report it as absent regardless of its actual state. XCUITest-style automation of the menu bar UI is a dead end.
+
+Drive the real bundle through a narrow, explicitly-flagged test surface instead, and assert on the artifacts it produces:
+
+```swift
+// In the app, gated so it cannot ship enabled by accident
+if CommandLine.arguments.contains("--ui-test-mode") {
+    TestControlSurface.install()   // exposes start/stop hooks only
+}
+```
+
+Launch the `.app` with that argument, exercise the hooks, and verify the output files. Keep the surface minimal - the goal is testability, not restructuring the app around the test harness.

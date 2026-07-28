@@ -382,3 +382,72 @@ extension View {
     }
 }
 ```
+
+## `@Entry` - custom environment keys in one line
+
+The `EnvironmentKey` + `EnvironmentValues` extension boilerplate is obsolete. `@Entry` generates both:
+
+```swift
+extension EnvironmentValues {
+    @Entry var captureSession: CaptureSession? = nil
+    @Entry var isCompactLayout: Bool = false
+}
+
+// Unchanged at the use site
+.environment(\.captureSession, session)
+@Environment(\.captureSession) private var session
+```
+
+Works for `FocusedValues`, `ContainerValues`, and `Transaction` too.
+
+## SwiftUI `WebView` (macOS 26+)
+
+WebKit ships a native SwiftUI view - `NSViewRepresentable` around `WKWebView` is no longer the default answer on macOS 26:
+
+```swift
+import WebKit
+import SwiftUI
+
+struct DocsView: View {
+    @State private var page = WebPage()
+
+    var body: some View {
+        WebView(page)
+            .onAppear { page.load(URLRequest(url: docsURL)) }
+            .navigationTitle(page.title)
+    }
+}
+```
+
+`WebPage` is `@Observable` - `page.title`, `page.url`, `page.isLoading`, and `page.estimatedProgress` drive SwiftUI directly with no KVO bridging. Call `page.callJavaScript(_:)` for evaluation. Keep the `NSViewRepresentable` wrapper only for back-deployment below macOS 26 or when you need `WKWebView` API the SwiftUI type does not expose.
+
+## Rich text editing (macOS 26+)
+
+`TextEditor` binds to `AttributedString`, making formatted text a first-class SwiftUI feature:
+
+```swift
+struct NotesEditor: View {
+    @State private var text = AttributedString("")
+    @State private var selection = AttributedTextSelection()
+
+    var body: some View {
+        TextEditor(text: $text, selection: $selection)
+            .attributedTextFormattingDefinition(NoteFormatting())
+    }
+}
+```
+
+`AttributedTextFormattingDefinition` constrains which attributes users may apply - use it rather than post-validating, so unsupported formatting never enters the document. The standard Format menu commands work against the selection automatically.
+
+## Window and scene APIs beyond `Window`/`WindowGroup`
+
+| API | Use |
+|---|---|
+| `UtilityWindow` | Panel-style scene (inspector, tool palette) without dropping to `NSPanel` |
+| `SettingsLink` | A button that opens Settings - correct across macOS versions, unlike hand-rolled selectors |
+| `defaultLaunchBehavior(.presented / .suppressed)` | Whether a scene opens at launch - the supported way to start windowless |
+| `WindowManagerRole` | Declares a scene's role to the window manager |
+| `windowResizeAnchor` | Which edge stays put when a window resizes programmatically |
+| `WindowDragGesture` | Drag the window from arbitrary content, not just the title bar |
+
+`defaultLaunchBehavior(.suppressed)` is the clean replacement for the `LSUIElement`-plus-close-the-window dance when an app should start with no visible window but is not permanently an accessory.

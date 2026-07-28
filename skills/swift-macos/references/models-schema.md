@@ -257,3 +257,86 @@ final class Item {
     }
 }
 ```
+
+## Compound uniqueness: `#Unique`
+
+`@Attribute(.unique)` constrains a single property. For multi-property (compound) uniqueness, use the freestanding `#Unique` macro inside the model body:
+
+```swift
+@Model
+final class Enrollment {
+    #Unique<Enrollment>([\.studentID, \.courseID])   // the pair must be unique
+
+    var studentID: UUID
+    var courseID: UUID
+    var enrolledAt: Date
+
+    init(studentID: UUID, courseID: UUID) {
+        self.studentID = studentID
+        self.courseID = courseID
+        self.enrolledAt = .now
+    }
+}
+```
+
+Multiple constraint sets are allowed: `#Unique<T>([\.a, \.b], [\.c])`. Same CloudKit caveat as `.unique` - unique constraints are unsupported when syncing, so a CloudKit-backed model cannot declare them.
+
+## Indexes: `#Index`
+
+Declares single or compound indexes so predicates and sorts can use them instead of scanning:
+
+```swift
+@Model
+final class LogEntry {
+    #Index<LogEntry>([\.timestamp], [\.level, \.timestamp])
+
+    var timestamp: Date
+    var level: String
+    var message: String
+
+    init(level: String, message: String) {
+        self.level = level
+        self.message = message
+        self.timestamp = .now
+    }
+}
+```
+
+Index the properties you actually filter and sort on. Compound index column order matters - `[\.level, \.timestamp]` serves "filter by level, sort by timestamp" but not the reverse.
+
+## Model inheritance
+
+`@Model` classes can subclass other `@Model` classes. Fetches on the parent type return subclass instances by default:
+
+```swift
+@Model class Media { var title: String; init(title: String) { self.title = title } }
+@Model final class Movie: Media { var runtime: Int = 0 }
+@Model final class Podcast: Media { var episodeCount: Int = 0 }
+
+// Returns Movies and Podcasts too
+let all = try context.fetch(FetchDescriptor<Media>())
+```
+
+Control this on deletes with `includeSubclasses` (defaults to `true`):
+
+```swift
+try context.delete(model: Media.self,
+                   where: #Predicate { $0.title.isEmpty },
+                   includeSubclasses: false)   // only exact Media rows
+```
+
+Inheritance costs query performance and complicates migration - prefer a shared protocol or an enum discriminator column unless you genuinely need polymorphic fetches.
+
+## `.ephemeral`
+
+The complete `Schema.Attribute.Option` set in the macOS 26.5 SDK is exactly: `.unique`, `.transformable(by:)`, `.externalStorage`, `.allowsCloudEncryption`, `.preserveValueOnDeletion`, `.ephemeral`, `.spotlight`. There is no `.encrypt` option - CloudKit field encryption is `.allowsCloudEncryption` (covered above).
+
+`.ephemeral` is the one not documented elsewhere in this file: the property participates in the model but is never persisted. Use it for transient state - a computed progress value, a cached thumbnail - that should not survive a relaunch.
+
+```swift
+@Model final class Download {
+    var url: URL
+    @Attribute(.ephemeral) var bytesReceived: Int = 0   // reset on every launch
+    init(url: URL) { self.url = url }
+}
+```

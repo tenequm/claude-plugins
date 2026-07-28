@@ -306,3 +306,53 @@ final class ViewModel {
     var items: [Item] = []
 }
 ```
+
+## The `Synchronization` module: `Mutex` and `Atomic`
+
+Actors are the default answer for shared mutable state, but they force `async` at every call site. In a realtime audio callback or a C-API completion handler you cannot `await` - which is exactly where `@unchecked Sendable` plus a manual lock usually gets reached for. The `Synchronization` module gives you a `Sendable`-correct alternative with no `@unchecked` escape hatch.
+
+```swift
+import Synchronization
+
+final class LevelMeter: Sendable {
+    private let peak = Mutex<Float>(0)
+
+    // Callable from a realtime audio thread - no await, no actor hop
+    func record(_ sample: Float) {
+        peak.withLock { $0 = max($0, abs(sample)) }
+    }
+
+    func drain() -> Float {
+        peak.withLock { value in
+            defer { value = 0 }
+            return value
+        }
+    }
+}
+```
+
+`Mutex<Value>` is `Sendable` when `Value` is, so the enclosing type conforms to `Sendable` without `@unchecked`. The compiler enforces that the value is only reachable inside `withLock`.
+
+For single values where a lock is overkill:
+
+```swift
+import Synchronization
+
+let frameCount = Atomic<Int>(0)
+frameCount.add(1, ordering: .relaxed)
+let total = frameCount.load(ordering: .acquiring)
+
+let isRunning = Atomic<Bool>(false)
+// Compare-and-exchange for idempotent start/stop
+let (exchanged, _) = isRunning.compareExchange(
+    expected: false, desired: true, ordering: .sequentiallyConsistent
+)
+guard exchanged else { return }   // someone else already started
+```
+
+Rules that matter:
+
+- **Never `await` inside `withLock`.** The closure is non-async by design; holding a lock across a suspension point is how you deadlock.
+- Keep the critical section tiny - copy out, compute outside.
+- Prefer `.relaxed` only for statistics counters. For anything establishing a happens-before relationship with other memory, use `.acquiring`/`.releasing` or `.sequentiallyConsistent`.
+- This is the tool for realtime and C-callback contexts. For ordinary app state, an actor is still the better default.

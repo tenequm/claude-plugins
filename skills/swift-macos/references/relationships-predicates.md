@@ -255,3 +255,46 @@ struct TaskListView: View {
     }
 }
 ```
+
+## Shaping the fetch
+
+`FetchDescriptor` carries more than `predicate` / `sortBy` / `fetchLimit`. These three change how much work a fetch does:
+
+```swift
+var descriptor = FetchDescriptor<Book>(
+    predicate: #Predicate { $0.year > 2000 },
+    sortBy: [SortDescriptor(\.title)]
+)
+
+// Fetch only these properties; others fault in on demand.
+descriptor.propertiesToFetch = [\.title, \.year]
+
+// Warm these relationships in the same round trip - avoids the N+1
+// pattern where iterating results triggers a fetch per book.
+descriptor.relationshipKeyPathsForPrefetching = [\.author]
+
+// Exclude unsaved in-context changes (default true).
+descriptor.includePendingChanges = false
+
+let books = try context.fetch(descriptor)
+```
+
+`relationshipKeyPathsForPrefetching` is the highest-leverage one: a list view that shows `book.author.name` for 500 rows issues 500 extra fetches without it.
+
+Also available: `fetchOffset` for paging alongside `fetchLimit`, and `context.fetchIdentifiers(_:)` when you only need `PersistentIdentifier`s (much cheaper than materializing models - useful for diffing or cross-context handoff).
+
+## Relationship cardinality
+
+`@Relationship` takes more than `deleteRule` and `inverse`:
+
+```swift
+@Relationship(
+    deleteRule: .cascade,
+    minimumModelCount: 1,        // enforce at least one
+    maximumModelCount: 10,       // and at most ten
+    inverse: \Chapter.book
+)
+var chapters: [Chapter] = []
+```
+
+`minimumModelCount` / `maximumModelCount` express cardinality constraints in the schema itself. `hashModifier` (on both `@Relationship` and `@Attribute`) forces a property to be treated as changed for migration purposes without renaming it.

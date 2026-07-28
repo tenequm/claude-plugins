@@ -478,3 +478,48 @@ func restartApp() {
     NSApplication.shared.terminate(nil)
 }
 ```
+
+## Crash: high-frequency MenuBarExtra label updates
+
+A per-second timer driving the `MenuBarExtra` label (an elapsed-time readout, a live meter) can crash intermittently with `EXC_BREAKPOINT` inside `-[NSWindow _postWindowNeedsUpdateConstraints]`. The `NSHostingView` backing the status item is pushed into an AppKit constraint-update exception by the repeated re-layout. It compiles, usually runs, and crashes in the field.
+
+Keep the SwiftUI label static and push frequent text through AppKit directly:
+
+```swift
+// Static label - SwiftUI never re-lays-out on every tick
+MenuBarExtra("Recorder", systemImage: "record.circle") { MenuBarView() }
+
+// Update the status item's title from AppKit instead
+statusItem.button?.attributedTitle = NSAttributedString(
+    string: elapsed,
+    attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)]
+)
+```
+
+Monospaced digits stop the width from oscillating each tick, which is what drives the constraint churn. If you must render SwiftUI, pre-render with `ImageRenderer` and assign the resulting image, and lower the update frequency - a wall-clock readout rarely needs more than 1 Hz, and a meter can be throttled well below its sample rate.
+
+## Crash visibility for menu-bar-only apps
+
+When an `LSUIElement` app crashes, macOS suppresses the "quit unexpectedly" dialog. The icon simply disappears and the user keeps believing the app is running - the worst failure mode for anything doing background recording or monitoring. An in-app `NSSetUncaughtExceptionHandler` only logs, and a crash notice shown at next launch lands in a dropdown nobody opens.
+
+Bundle a small helper that watches the main app's PID and reports unexpected exits:
+
+```c
+int fd = kqueue();
+struct kevent change;
+EV_SET(&change, targetPID, EVFILT_PROC, EV_ADD | EV_ENABLE, NOTE_EXIT, 0, NULL);
+kevent(fd, &change, 1, NULL, 0, NULL);
+
+struct kevent event;
+kevent(fd, NULL, 0, &event, 1, NULL);   // blocks until the process exits
+// Inspect exit status, then show a dialog if it was not a clean quit
+```
+
+Choose the hosting model deliberately:
+
+| Model | Pros | Cons |
+|---|---|---|
+| Spawned by the app at launch | No system prompt, dies with the parent, nothing in System Settings | Cannot catch very early startup crashes |
+| `SMAppService` login item in `Contents/Library/LoginItems/` | Survives reboot, catches startup crashes | Triggers a one-time "Background Items Added" notification, and the user can silently disable it in System Settings |
+
+The spawned helper is the lighter default. Reach for the registered login item only if crashes during startup are the ones you actually need to see.

@@ -1289,3 +1289,126 @@ class DisplayRecorder: NSObject, SCStreamDelegate, SCRecordingOutputDelegate {
 | SCContentSharingPicker, SCScreenshotManager | 14.0 |
 | SCRecordingOutput, SCStreamOutputType.microphone | 15.0 |
 | HDR capture, configuration presets | 15.0 |
+
+## `synchronizationClock`: aligning SCStream with other capture sources
+
+`SCStream.synchronizationClock` exposes the `CMClock` that SCStream timestamps its buffers against. When you mix SCStream output with a second pipeline - an `AVAudioEngine` mic tap, a `CATap`, an `AVCaptureSession` - both sides must be expressed in the same time base or the muxed result drifts even though each track is individually correct.
+
+```swift
+if let clock = stream.synchronizationClock {
+    session.synchronizationClock = clock       // AVCaptureSession
+    // or convert a host-time stamp into the stream's base
+    let streamTime = CMSyncConvertTime(hostTime, from: CMClockGetHostTimeClock(), to: clock)
+}
+```
+
+Do this instead of subtracting a captured "start host time" from both sides - that approximation accumulates error over long recordings and is a common cause of audio slowly sliding against video.
+
+## Screenshots: `SCScreenshotConfiguration` (macOS 26+)
+
+`SCScreenshotManager.captureImage(contentFilter:configuration:)` takes an `SCStreamConfiguration`, which means single-frame capture inherits stream semantics it does not need. macOS 26 adds a dedicated path:
+
+```swift
+let config = SCScreenshotConfiguration()
+config.width = 3840
+config.height = 2160
+config.dynamicRange = .high          // HDR without the stream preset dance
+config.includesCursor = false
+
+let output = try await SCScreenshotManager.captureScreenshot(
+    contentFilter: filter, configuration: config
+)
+let image = output.cgImage
+```
+
+Prefer this over `SCStreamConfiguration(preset: .captureHDRScreenshotLocalDisplay)` on macOS 26+; the preset route remains correct for 14/15 back-deployment.
+
+## Presenter Overlay delegate callbacks
+
+When the user turns on Presenter Overlay (the camera-overlay feature in video calls), the system reshapes your capture. `SCStreamDelegate` gets told, and most implementations silently ignore it:
+
+```swift
+func stream(_ stream: SCStream, outputVideoEffectDidStartFor screen: SCStream) {
+    // Overlay active - your frames now include the camera composite
+}
+func stream(_ stream: SCStream, outputVideoEffectDidStopFor screen: SCStream) { }
+```
+
+Set `config.presenterOverlayPrivacyAlertSetting` to control whether the system shows its privacy alert. If your app records for later playback rather than live presentation, handling these callbacks lets you warn the user that an overlay is being baked into the recording.
+
+## `SCStreamConfiguration` properties worth knowing
+
+Beyond `width`/`height`/`capturesAudio`/`minimumFrameInterval`:
+
+| Property | Use |
+|---|---|
+| `sourceRect` | Capture a sub-region of the display without post-cropping |
+| `destinationRect` | Place captured content within the output surface |
+| `preservesAspectRatio` | Letterbox instead of stretching when the rects disagree |
+| `showMouseClicks` | Visualize clicks - useful for tutorial/demo recording |
+| `includeChildWindows` | Include or exclude child windows of a captured window |
+| `capturesShadowsOnly` | Window shadows without the window |
+| `colorMatrix` | Override the YCbCr matrix for the output pixel buffers |
+| `ignoreGlobalClipDisplay` / `ignoreGlobalClipSingleWindow` | Bypass global clipping behavior |
+
+## Trap: a mono downmix that assumes interleaved layout
+
+A `resampleToMono` helper that indexes `floatChannelData[0]` as `[L, R, L, R, ...]` is only correct for an **interleaved** buffer. `AVAudioPCMBuffer` is frequently **planar (non-interleaved)**, where `floatChannelData[0]` is the entire left channel and the right channel lives at `floatChannelData[1]`.
+
+Feed a planar buffer to interleaved-indexing code and you average two adjacent *left* samples and never read the right channel at all. The output is audibly wrong but not silent - it passes a smoke test and ships.
+
+```swift
+func downmixToMono(_ buffer: AVAudioPCMBuffer) -> [Float] {
+    guard let data = buffer.floatChannelData else { return [] }
+    let frames = Int(buffer.frameLength)
+    let channels = Int(buffer.format.channelCount)
+    guard channels > 1 else { return Array(UnsafeBufferPointer(start: data[0], count: frames)) }
+
+    var mono = [Float](repeating: 0, count: frames)
+    if buffer.format.isInterleaved {
+        let p = data[0]
+        for i in 0..<frames {
+            mono[i] = (p[i * channels] + p[i * channels + 1]) * 0.5
+        }
+    } else {
+        let left = data[0], right = data[1]
+        for i in 0..<frames {
+            mono[i] = (left[i] + right[i]) * 0.5
+        }
+    }
+    return mono
+}
+```
+
+Always branch on `buffer.format.isInterleaved`. Test with hostile stereo - opposite-polarity channels sum to silence under a correct downmix and to a full-amplitude signal under the broken one, which makes the bug unmissable.
+
+## Trap: a stale TCC row from a superseded signing identity
+
+After switching signing identity - ad-hoc or self-signed during development, then Developer ID for release - System Settings can still list the app under Screen Recording with the toggle **on**, while `CGPreflightScreenCaptureAccess()` returns `false` and the app re-prompts on every launch. The visible UI and the API disagree because the stored grant is keyed to the old signature.
+
+There is no programmatic fix. The user must:
+
+1. System Settings > Privacy & Security > Screen & System Audio Recording
+2. Select the stale row, click **-** to delete it
+3. Deny the pending prompt, quit and relaunch the app
+4. Grant again against the new identity
+
+After that, TCC keys on team ID plus bundle ID and the grant survives subsequent rebuilds. Frame this to users as a one-time cost of the identity migration, not a bug - and avoid shipping a build signed with a different identity than the one testers already granted.
+
+## Trap: mic tap dies on an output-device switch with no notification
+
+Switching the **output** device can tear down and rebuild the capture graph without `AVAudioEngineConfigurationChange` firing for the **input** side. The mic tap stays attached to a dead graph and delivers no buffers for the remainder of the recording - no error, no log line, no callback.
+
+Do not rely on the notification alone as your recovery trigger. After any capture-path rebuild, run a bounded staleness check:
+
+```swift
+private func verifyMicAlive(after rebuild: Date) async {
+    try? await Task.sleep(for: .milliseconds(400))
+    if lastMicBufferAt < rebuild {
+        await teardownEngine()      // full teardown, not reuse
+        await buildEngine()
+    }
+}
+```
+
+Recreate the engine rather than reusing the existing graph - reattaching a tap to the stale engine reproduces the same dead state.

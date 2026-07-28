@@ -102,12 +102,24 @@ xcodebuild -exportArchive \
   -exportPath build/export \
   -exportOptionsPlist ExportOptions.plist
 
-# Or upload directly
-xcrun altool --upload-app \
-  -f build/export/MyApp.pkg \
-  -t macos \
-  --apiKey KEY_ID \
-  --apiIssuer ISSUER_ID
+# Or upload directly. Use notarytool - NOT `altool --upload-app`:
+# the notary service stopped accepting altool uploads on 2023-11-01,
+# and the flag is absent from Xcode 26.6's altool --help.
+xcrun notarytool submit build/export/MyApp.pkg \
+  --key AuthKey_KEYID.p8 \
+  --key-id KEY_ID \
+  --issuer ISSUER_ID \
+  --wait
+```
+
+### Notarize-then-export in one archive flow
+
+`xcodebuild` can export an already-notarized archive directly, which avoids re-signing between notarization and distribution:
+
+```bash
+xcodebuild -exportNotarizedApp \
+  -archivePath build/MyApp.xcarchive \
+  -exportPath build/notarized
 ```
 
 ## Developer ID Distribution
@@ -262,7 +274,9 @@ First notarization submissions from a new Developer ID can sit "In Progress" for
 
 ### Gatekeeper bypass for non-notarized builds
 
-Developer ID-signed but non-notarized apps show Gatekeeper warnings. Users can bypass: right-click the app > Open > click "Open" in the dialog (one-time). Or: System Settings > Privacy & Security > "Open Anyway".
+Developer ID-signed but non-notarized apps show Gatekeeper warnings. **The Control-click (right-click) > Open override was removed in macOS Sequoia and is still gone in Tahoe 26** - do not tell users to use it.
+
+The only supported path now: try to open the app once (so the block is registered), then System Settings > Privacy & Security > scroll down > **Open Anyway** > confirm. Apple's [current documentation](https://support.apple.com/en-us/102445) describes this flow exclusively. The app is then saved as an exception and opens by double-click thereafter.
 
 ### Sparkle EdDSA signing
 
@@ -411,3 +425,69 @@ struct MyApp: App {
     }
 }
 ```
+
+## Notarization rejections: check these first
+
+`com.apple.security.get-task-allow` is the single most common cause. It is the debug entitlement Xcode injects into Debug builds; if it survives into the archive you submit, the notary service rejects the upload. Verify before submitting:
+
+```bash
+codesign -d --entitlements - --xml build/export/MyApp.app | plutil -p -
+```
+
+If `get-task-allow` appears with value `true`, you archived a Debug configuration or a custom entitlements file carries it. Strip it from the Release entitlements.
+
+Other frequent blockers:
+
+- Hardened Runtime not enabled on every executable in the bundle (not just the main one).
+- A nested binary signed with a different Team ID, or left unsigned.
+- **Plug-in entitlement inheritance**: "Shared libraries, frameworks, and in-process plug-ins inherit the entitlements of their host executable." The host app must declare every entitlement its plug-ins need - a plug-in cannot add its own.
+
+Reference: [Resolving common notarization issues](https://developer.apple.com/documentation/security/resolving-common-notarization-issues).
+
+## Enhanced Security capability (Xcode 26+)
+
+Xcode 26 added an **Enhanced Security** capability enabling additional runtime and compile-time protections - pointer authentication, hardened heap, memory tagging - via the `com.apple.security.hardened-process.*` entitlement family.
+
+The entitlement schema changed again in Xcode 26.4: `-version` became `-version-string` and `-platform-restrictions` became `-platform-restrictions-string`. If you hand-maintain an entitlements plist rather than using the capability UI, re-check the key spellings against the [Security entitlements reference](https://developer.apple.com/documentation/bundleresources/security-entitlements) when moving between Xcode versions.
+
+## Installer packages
+
+For apps that need an installer rather than a drag-to-Applications DMG:
+
+```bash
+pkgbuild --root build/export/MyApp.app \
+  --identifier com.example.myapp \
+  --version 1.0.0 \
+  --install-location /Applications/MyApp.app \
+  build/MyApp-component.pkg
+
+productbuild --distribution Distribution.xml \
+  --package-path build \
+  build/MyApp.pkg
+
+productsign --sign "Developer ID Installer: Your Name (TEAMID)" \
+  build/MyApp.pkg build/MyApp-signed.pkg
+```
+
+Note the identity is **Developer ID Installer**, a different certificate from the **Developer ID Application** identity used for the app itself.
+
+Useful `notarytool` subcommands beyond `submit`:
+
+```bash
+xcrun notarytool history --key ... --key-id ... --issuer ...
+xcrun notarytool log <submission-id> --key ... --key-id ... --issuer ...
+xcrun notarytool info <submission-id> -f json --key ... --key-id ... --issuer ...
+```
+
+`--s3-acceleration` speeds up large uploads. `stapler validate <path>` verifies a stapled ticket.
+
+## Homebrew cask as a second install channel
+
+A signed, notarized Mac app can ship through a Homebrew tap alongside the DMG. Practical constraints, in the order they usually bite:
+
+- **Pick a globally unique cask token.** Tap CI (`brew test-bot --only-tap-syntax`) fails if your token collides with one in homebrew-core, and renaming later orphans every existing install.
+- **If you must rename, ship `cask_renames.json`** in the tap so `brew update` migrates existing installs. `tap_migrations.json` is for cross-tap moves and will not do this.
+- **Set `auto_updates true`** when the app self-updates via Sparkle, so Homebrew does not fight the in-app updater. Add a `livecheck` block so version bumps are detectable.
+- **`depends_on macos:` cannot express a point release** (e.g. 26.1). Enforce a precise minimum in the app at launch and treat the cask constraint as approximate.
+- **Reinstalling over an app already in `/Applications` fails** without `--force`.
+- Run `brew style` and `brew audit --cask` before pushing; generated casks commonly trip on a redundant `version` line.

@@ -243,3 +243,33 @@ nonisolated(unsafe) let logger = Logger()
 10. [ ] Enable default MainActor isolation (Swift 6.2)
 11. [ ] Add @concurrent to functions needing background execution
 12. [ ] Remove now-redundant @MainActor annotations
+
+## Let the compiler do the migration: `swift package migrate`
+
+SwiftPM ships a migration command that mechanically rewrites source for a given upcoming feature, instead of chasing diagnostics by hand:
+
+```bash
+swift package migrate --to-feature ExistentialAny
+swift package migrate --to-feature InternalImportsByDefault
+swift package migrate --target MyApp --to-feature NonisolatedNonsendingByDefault
+```
+
+It applies the fix-its across the target and updates `Package.swift` to enable the feature. Run it on a clean tree, one feature at a time, and review the diff - it is a mechanical rewrite, not a design review.
+
+Full flag list: `swift package migrate --help`.
+
+## Upcoming-feature flags worth knowing individually
+
+Enabling `.swiftLanguageMode(.v6)` in one step is often too big a jump for an existing codebase. These dials let you land Swift 6 semantics incrementally, each as `.enableUpcomingFeature("<name>")`:
+
+| Flag | What it turns on |
+|---|---|
+| `StrictConcurrency` | Full data-race checking under language mode 5 |
+| `InferSendableFromCaptures` | Closures infer `Sendable` from what they capture - removes many spurious annotations |
+| `GlobalActorIsolatedTypesUsability` | Makes global-actor-isolated types usable in more generic contexts |
+| `NonisolatedNonsendingByDefault` | `nonisolated async` inherits the caller's isolation |
+| `DisableOutwardActorInference` | Stops a global-actor-isolated property from silently isolating its containing type |
+| `ExistentialAny` | Requires `any` on existential types |
+| `InternalImportsByDefault` | Imports are `internal` unless marked `public` |
+
+`DisableOutwardActorInference` is the one that most often explains a surprise: a single `@MainActor var` can otherwise pull an entire type onto the main actor without you writing that anywhere.

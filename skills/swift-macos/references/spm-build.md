@@ -76,8 +76,10 @@ let package = Package(
         .enableUpcomingFeature("ExistentialAny"),
         .enableUpcomingFeature("InternalImportsByDefault"),
 
-        // Strict memory safety (Swift 6.2)
-        .enableExperimentalFeature("StrictMemorySafety"),
+        // Strict memory safety - first-class setting since Swift 6.2 (SE-0458).
+        // The old .enableExperimentalFeature("StrictMemorySafety") spelling still
+        // builds, but prefer the real API.
+        .strictMemorySafety(),
 
         // Warning control (Swift 6.2)
         .treatAllWarnings(as: .error),
@@ -182,14 +184,85 @@ Apple open-sourced Xcode's build engine as Swift Build (Feb 2025). Aims to unify
 - Build graph optimizations for Swift/C parallel compilation
 - Future: Replace SPM's simple build engine with Swift Build
 
-Current status: Available as open source, integration with SPM ongoing.
+Current status: **shipping**, not "integration ongoing". SwiftPM 6.3 exposes it as a preview behind a flag; SwiftPM 6.4 makes it the default build system.
+
+```bash
+# Opt in on the 6.3 toolchain
+swift build --build-system swiftbuild
+
+# Swift Build supports SwiftPM-native universal binaries
+swift build --build-system swiftbuild --arch arm64 --arch x86_64
+```
+
+The `--arch` flags are a Swift Build capability - the default 6.3 native build system builds a single architecture, which is why manual `.app` assembly elsewhere in this file hardcodes `.build/arm64-apple-macosx/release/`. Sources: [SwiftPM 6.3 notes](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/6.3), [Swift Build preview](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/swiftbuildpreview).
+
+## Package Traits (SE-0450, Swift 6.1+)
+
+Conditional compilation flags for packages - let consumers opt into optional feature sets without separate products:
+
+```swift
+let package = Package(
+    name: "MyLib",
+    traits: [
+        .default(enabledTraits: ["Networking"]),
+        "Networking",
+        .trait(name: "Experimental", enabledTraits: ["Networking"]),
+    ],
+    targets: [
+        .target(name: "MyLib", swiftSettings: [
+            .define("NETWORKING", .when(traits: ["Networking"])),
+        ]),
+    ]
+)
+
+// Consumer side
+.package(url: "https://github.com/org/mylib", from: "1.0.0", traits: ["Experimental"]),
+```
+
+Inspect with `swift package show-traits`. **Traits must be strictly additive - enabling a trait must not remove API.** Breaking that rule makes dependency resolution unsound, since two consumers can enable different trait sets on the same package build.
+
+## Other target kinds
+
+Beyond `.target` / `.executableTarget` / `.testTarget`:
+
+```swift
+.binaryTarget(name: "Vendor", path: "Vendor.xcframework"),           // prebuilt .xcframework
+.binaryTarget(name: "Remote", url: "https://.../lib.zip", checksum: "..."),
+.systemLibrary(name: "CZlib", pkgConfig: "zlib"),                    // wrap a system C library
+```
+
+Plugin sandbox permissions must be declared explicitly - a command plugin that writes outside the package or hits the network is denied by default:
+
+```swift
+.plugin(name: "Generate", capability: .command(
+    intent: .custom(verb: "generate", description: "Generate sources"),
+    permissions: [
+        .writeToPackageDirectory(reason: "Writes generated sources"),
+        .allowNetworkConnections(scope: .all(ports: [443]), reason: "Fetches schema"),
+    ]
+))
+```
+
+## Build fails before compiling your code: unwritable `$HOME` caches
+
+In sandboxed, CI, or agent environments, `swift build` and `swift test` can die during **manifest compilation** - before touching your sources - because SwiftPM's cache and the clang module cache live under the home directory and are not writable. The error names SwiftPM internals, so it reads like a broken package when the package is fine.
+
+```bash
+swift build \
+  --cache-path "$SCRATCH/spm-cache" \
+  --scratch-path "$SCRATCH/build" \
+  -Xswiftc -module-cache-path -Xswiftc "$SCRATCH/module-cache"
+```
+
+Redirect the caches to a writable scratch directory and re-run before concluding anything about the package itself.
 
 ## Macros
 
 ### Using macros
 ```swift
 // Add macro package
-.package(url: "https://github.com/swiftlang/swift-syntax", from: "600.0.0"),
+// Pin to the swift-syntax release matching your toolchain: 6.3 -> 603.x
+.package(url: "https://github.com/swiftlang/swift-syntax", from: "603.0.2"),
 
 .target(
     name: "MyApp",
@@ -214,10 +287,10 @@ curl -L https://swift.org/install | bash
 swiftly install latest
 
 # Install specific version
-swiftly install 6.2.4
+swiftly install 6.3.3
 
 # Switch versions
-swiftly use 6.2.4
+swiftly use 6.3.3
 
 # List installed
 swiftly list

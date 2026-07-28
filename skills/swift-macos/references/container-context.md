@@ -192,15 +192,19 @@ try context.delete(
 ```
 
 ### Enumerate for bulk processing
+
+`FetchDescriptor` has **no** `fetchBatchSize` property - batching is a parameter on `enumerate` itself (default 5000):
+
 ```swift
 let descriptor = FetchDescriptor<Project>()
-descriptor.fetchBatchSize = 100
 
-try context.enumerate(descriptor) { project in
+try context.enumerate(descriptor, batchSize: 100) { project in
     project.lastSyncedAt = .now
 }
 try context.save()
 ```
+
+Full signature: `enumerate(_:batchSize:allowEscapingMutations:block:)`. Set `allowEscapingMutations: true` only when the block intentionally mutates objects outside the enumerated set - otherwise SwiftData traps on escaping mutations, which is the behavior you want as a safety net.
 
 ## Undo/Redo
 
@@ -304,3 +308,74 @@ struct ProjectRepositoryTests {
     }
 }
 ```
+
+## History tracking
+
+SwiftData records a transaction history you can replay - the basis for "what changed since I last looked" across processes, app relaunches, or CloudKit pulls. This is a whole API surface distinct from `@Query` observation.
+
+```swift
+import SwiftData
+
+// Fetch every transaction newer than a stored token
+func changes(since token: (any HistoryToken)?, context: ModelContext) throws -> [DefaultHistoryTransaction] {
+    var descriptor = HistoryDescriptor<DefaultHistoryTransaction>()
+    if let token {
+        descriptor.predicate = #Predicate { $0.token > token }
+    }
+    return try context.fetchHistory(descriptor)
+}
+
+for transaction in try changes(since: lastToken, context: context) {
+    for change in transaction.changes {
+        switch change {
+        case .insert(let inserted):  handleInsert(inserted.changedPersistentIdentifier)
+        case .update(let updated):   handleUpdate(updated.changedPersistentIdentifier)
+        case .delete(let deleted):   handleDelete(deleted.tombstone)
+        }
+    }
+    lastToken = transaction.token   // persist this
+}
+```
+
+Key types: `HistoryDescriptor`, `HistoryToken` (Comparable + Codable - persist it between launches), `HistoryTransaction`, and the change types `HistoryInsert` / `HistoryUpdate` / `HistoryDelete` with their `Default*` concrete variants.
+
+A delete leaves a **tombstone** rather than the object - the row is gone, so only the values you marked `@Attribute(.preserveValueOnDeletion)` survive in the tombstone. If you need to know *which* record was deleted (to mirror the delete to a server, say), mark that identifier with `.preserveValueOnDeletion` up front or the tombstone will not carry it.
+
+Prune consumed history so the store does not grow without bound:
+
+```swift
+try context.deleteHistory(HistoryDescriptor<DefaultHistoryTransaction>(
+    predicate: #Predicate { $0.token < cutoffToken }
+))
+```
+
+## Custom data stores
+
+`DataStore` lets you back SwiftData with something other than its default SQLite store - a JSON file, a remote service, an in-memory fixture - while keeping `@Model`, `@Query`, and `ModelContext` unchanged.
+
+```swift
+final class JSONStore: DataStore {
+    typealias Configuration = JSONStoreConfiguration
+    typealias Snapshot = DefaultSnapshot
+
+    var identifier: String
+    var schema: Schema
+    var configuration: JSONStoreConfiguration
+
+    func fetch<T>(_ request: DataStoreFetchRequest<T>) throws -> DataStoreFetchResult<T, DefaultSnapshot>
+    where T: PersistentModel { /* read + decode */ }
+
+    func save(_ request: DataStoreSaveChangesRequest<DefaultSnapshot>) throws
+        -> DataStoreSaveChangesResult<DefaultSnapshot> { /* encode + write */ }
+}
+
+// Wire it up
+let container = try ModelContainer(
+    for: Project.self,
+    configurations: JSONStoreConfiguration(name: "Local", schema: schema, fileURL: url)
+)
+```
+
+Adopt `DataStoreBatching` to support batched fetches, and `HistoryProviding` if the store should serve the history API above. Related: `DataStoreError`, `DataStoreSnapshotCodingKey`.
+
+This is the supported route for a read-only or remote-backed store. It is a substantial amount of code - reach for it only when the default store genuinely cannot work, not to avoid a migration.

@@ -198,3 +198,30 @@ func audioCapturePermissionGranted() -> Bool {
 ```
 
 For the "granted but silent" failure mode after a force-recursive replace (rm&#8209;rf + cp&#8209;R) reinstall with the same Developer ID, see `distribution.md` - TCC is keyed by CDHash; a same-CDHash reinstall can leave the entry in a degraded state where it reads authorized but delivers no audio. Fix: toggle off/on in System Settings.
+
+## Another app's Voice Processing reshapes your microphone tap
+
+Voice Processing (VPIO) is a property of the shared input path, not of your process alone. When a communications app enables it during a call, your own raw mic tap can be handed a layout you did not ask for - more than two channels - and naive stereo handling produces a nearly inaudible track.
+
+```swift
+let format = inputNode.inputFormat(forBus: 0)
+if format.channelCount > 2 {
+    // Take channel 0 rather than downmixing an unknown layout
+    mono = extractChannel(0, from: buffer)
+    mono = applyMakeupGain(mono, db: calibratedGainDB)
+} else {
+    mono = downmixToMono(buffer)   // branch on isInterleaved - see screen-capture-audio.md
+}
+logRMS(mono)   // per-session RMS makes a wrong gain diagnosable on other hardware
+```
+
+Log per-session RMS. A makeup gain calibrated on one machine is a guess on another, and RMS in the log is the difference between "the user reports it is quiet" and knowing by how much.
+
+### Enabling VPIO in your own engine ducks all other system audio
+
+Beyond the incompatibility already documented above, turning on `setVoiceProcessingEnabled(true)` makes macOS classify your process as a VoIP app and duck every other audio source by roughly 20 dB system-wide. If you are concurrently capturing system audio, you have just attenuated your own recording's content by 20 dB.
+
+Treat "enable VPIO for AEC/AGC" as an experiment that must be measured, not a default:
+
+- Measure the ducking effect on a concurrent system-audio capture before shipping it.
+- Keep a raw-mode fallback: enabling voice processing can fail and leave the input node in a corrupted state, so the code path that runs without it must stay working.

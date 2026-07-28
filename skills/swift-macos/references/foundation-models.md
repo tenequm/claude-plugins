@@ -405,3 +405,67 @@ Primary references:
 - <https://developer.apple.com/documentation/foundationmodels/generating-content-and-performing-tasks-with-foundation-models>
 - <https://developer.apple.com/documentation/technotes/tn3193-managing-the-on-device-foundation-model-s-context-window>
 - <https://developer.apple.com/documentation/foundationmodels/loading-and-using-a-custom-adapter-with-foundation-models>
+
+## `@PromptBuilder` - composing prompts structurally
+
+Every `respond`/`streamResponse` method has an overload taking a `@PromptBuilder` closure instead of a string. Use it when the prompt is assembled conditionally - it keeps the structure readable and avoids string-concatenation bugs:
+
+```swift
+let response = try await session.respond(generating: Summary.self) {
+    "Summarize the following meeting transcript."
+
+    if let focus = userFocus {
+        "Focus specifically on: \(focus)"
+    }
+
+    for segment in transcript.segments {
+        "[\(segment.speaker)]: \(segment.text)"
+    }
+}
+```
+
+`@InstructionsBuilder` does the same for `Instructions` at session construction:
+
+```swift
+let session = LanguageModelSession {
+    "You are a concise meeting summarizer."
+    if compactMode { "Keep every bullet under 12 words." }
+}
+```
+
+## Runtime schemas with `DynamicGenerationSchema`
+
+`@Generable` requires the shape at compile time. When the structure is only known at runtime - user-defined extraction fields, a schema fetched from a server - build it dynamically:
+
+```swift
+let schema = DynamicGenerationSchema(
+    name: "ExtractedRecord",
+    properties: userFields.map { field in
+        DynamicGenerationSchema.Property(
+            name: field.name,
+            schema: DynamicGenerationSchema(type: String.self),
+            isOptional: !field.isRequired
+        )
+    }
+)
+
+let generationSchema = try GenerationSchema(root: schema, dependencies: [])
+let response = try await session.respond(to: prompt, schema: generationSchema)
+let content: GeneratedContent = response.content
+let value = try content.value(String.self, forProperty: "title")
+```
+
+The result is `GeneratedContent` rather than a typed struct - read properties by name with `value(_:forProperty:)`. Prefer `@Generable` whenever the shape is static; this path trades compile-time safety for flexibility.
+
+## `ContextOptions` - managing the context window
+
+Long multi-turn sessions eventually exceed the model's context. `ContextOptions` controls what happens at the boundary rather than letting the session fail:
+
+```swift
+let session = LanguageModelSession(
+    model: .default,
+    contextOptions: ContextOptions(/* trimming / retention policy */)
+)
+```
+
+Pair it with the existing `exceededContextWindowSize` error handling documented above - the options reduce how often you hit the error, but a long-lived session still needs the recovery path that starts a fresh session seeded with a summary of the old transcript.

@@ -314,3 +314,46 @@ class Recorder {
     }
 }
 ```
+
+## `nonisolated(nonsending)` - the spelling behind the behavior
+
+The section above describes how a `nonisolated async` function runs on the caller's actor rather than hopping to the global executor. The attribute that expresses this explicitly is `nonisolated(nonsending)` (SE-0461), and you will meet it in Xcode diagnostics and in Apple's own signatures long before you write it yourself:
+
+```swift
+// From FoundationModels - note the annotation on Apple's API
+nonisolated(nonsending) public func respond(
+    to prompt: Prompt, options: GenerationOptions
+) async throws -> LanguageModelSession.Response<String>
+```
+
+Three spellings, three behaviors:
+
+| Declaration | Runs on |
+|---|---|
+| `nonisolated func f() async` | caller's isolation (under `NonisolatedNonsendingByDefault`) |
+| `nonisolated(nonsending) func f() async` | caller's isolation, stated explicitly |
+| `@concurrent func f() async` | the global concurrent executor, always |
+
+Write `nonisolated(nonsending)` when you want the caller-inherits behavior to survive regardless of whether the module has the upcoming feature enabled - it is the portable way to say "do not hop".
+
+## Isolated conformances (SE-0470)
+
+A recurring wall under default `MainActor` isolation: a `@MainActor` type needs to conform to a `nonisolated` protocol from a framework - `SCStreamOutput`, `SCStreamDelegate`, `NSObjectProtocol`-derived delegates. The conformance requirements are not main-actor-isolated, so the compiler rejects the isolated implementations.
+
+Swift 6.2 lets the conformance itself carry isolation:
+
+```swift
+@MainActor
+final class CaptureController: NSObject, @MainActor SCStreamOutput {
+    var frameCount = 0   // main-actor state, safe to touch below
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer,
+                of type: SCStreamOutputType) {
+        frameCount += 1
+    }
+}
+```
+
+The compiler then guarantees the conformance is only used from that actor - if something tries to use `CaptureController` as an `SCStreamOutput` from another isolation domain, that is the error, rather than every method body erroring.
+
+Caveat worth knowing before reaching for it: an isolated conformance cannot be used where the protocol is required to be `Sendable`-usable across domains. When a framework hands your delegate to a background queue, the right answer is still a `nonisolated` conformance whose body hops explicitly - isolated conformances solve the "this genuinely only ever runs on main" case, not the "I want to silence the error" case.

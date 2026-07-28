@@ -2,8 +2,8 @@
 name: swift-macos
 description: Comprehensive macOS app development with Swift 6.3, SwiftUI, SwiftData, Swift Concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, and app distribution. Use when building native Mac apps, implementing windows/scenes/navigation/menus/toolbars, SwiftData models and queries, modern concurrency, on-device AI, testing, screen/audio capture, menu bar apps, AppKit bridges, login items, process monitoring, or App Store and Developer ID distribution. Triggers on macOS app, SwiftUI macOS, SwiftData, Swift concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, screen capture, screen recording, AVFoundation, MenuBarExtra, NSViewRepresentable, notarize, login item, and process monitoring.
 metadata:
-  version: "0.6.3"
-  upstream: "swift@6.3.3, xcode@26.6"
+  version: "0.7.0"
+  upstream: "swift@6.3.3, xcode@26.6, macos@26.6"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/swift-macos
     emoji: "🍎"
@@ -13,7 +13,7 @@ metadata:
 
 # macOS App Development - Swift 6.3
 
-Build native macOS apps with Swift 6.3 (latest: 6.3.3, bundled in Xcode 26.6, Jun 2026), SwiftUI, SwiftData, and macOS 26 Tahoe (26.5 current). Target macOS 14+ for SwiftData/@Observable, macOS 15+ for latest SwiftUI, macOS 26 for Liquid Glass and Foundation Models. For the WWDC 2026 beta stack (macOS 27, Xcode 27, Swift 6.4, shipping fall 2026), see `references/fall-2026-releases.md`.
+Build native macOS apps with Swift 6.3 (latest: 6.3.3, bundled in Xcode 26.6, Jun 2026), SwiftUI, SwiftData, and macOS 26 Tahoe (26.6 current). Target macOS 14+ for SwiftData/@Observable, macOS 15+ for latest SwiftUI, macOS 26 for Liquid Glass and Foundation Models. Note Xcode 26.6 still bundles the macOS **26.5** SDK, so 26.6-only API is not yet buildable. For the WWDC 2026 beta stack (macOS 27, Xcode 27, Swift 6.4, shipping fall 2026), see `references/fall-2026-releases.md`.
 
 ## Quick Start
 
@@ -25,7 +25,8 @@ import SwiftData
 final class Project {
     var name: String
     var createdAt: Date
-    @Relationship(deleteRule: .cascade) var tasks: [Task] = []
+    // Named ProjectTask, not Task - `Task` would shadow `Swift.Task`
+    @Relationship(deleteRule: .cascade) var tasks: [ProjectTask] = []
 
     init(name: String) {
         self.name = name
@@ -34,7 +35,7 @@ final class Project {
 }
 
 @Model
-final class Task {
+final class ProjectTask {
     var title: String
     var isComplete: Bool
     var project: Project?
@@ -51,7 +52,7 @@ struct MyApp: App {
         WindowGroup("Projects") {
             ContentView()
         }
-        .modelContainer(for: [Project.self, Task.self])
+        .modelContainer(for: [Project.self, ProjectTask.self])
         .defaultSize(width: 900, height: 600)
 
         #if os(macOS)
@@ -322,10 +323,12 @@ import FoundationModels
 
 let session = LanguageModelSession()
 let response = try await session.respond(to: "Summarize: \(text)")
+print(response.content)  // respond() returns Response<Content>, not Content
 
 // Structured output
 @Generable struct Summary { var title: String; var points: [String] }
-let result: Summary = try await session.respond(to: prompt, generating: Summary.self)
+let result = try await session.respond(to: prompt, generating: Summary.self)
+let summary: Summary = result.content
 ```
 
 For tool calling, streaming, and sessions, see `references/foundation-models.md`.
