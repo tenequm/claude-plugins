@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Set up the fixture repo by running `bash evals/fixtures/correctness-convention/setup.sh`, then follow the printed instructions to export PATH and cd into the repo. Then run /review-pr 1",
-      "expected_output": "Report should find: (1) null safety bug in GetTicket - ticket can be nil after GetTicket returns no error, (2) unnamed CHECK constraint in 003_add_tickets.sql deviating from named constraint convention in existing migrations, (3) Scan default case returns error instead of nil like existing OrderStatus.Scan. Should cite specific existing files as evidence for convention findings. Should NOT suggest fixes directly - should produce review comments. Should wait for user to choose review type before posting.",
+      "expected_output": "Report should find: (1) null safety bug in GetTicket - ticket can be nil after GetTicket returns no error, (2) unnamed CHECK constraint in 003_add_tickets.sql deviating from named constraint convention in existing migrations, (3) Scan default case returns error instead of nil like existing OrderStatus.Scan. Should cite specific existing files as evidence for convention findings. Should NOT suggest fixes directly - should produce review comments. Should end with a recommended review action (request-changes, given the critical finding) and wait for user confirmation before posting.",
       "files": ["evals/fixtures/correctness-convention/setup.sh"],
       "expectations": [
         "Report flags the null safety issue in GetTicket - ticket can be nil if not found but is accessed without nil check",
@@ -13,7 +13,7 @@
         "Convention findings cite specific existing files and line references as evidence",
         "All three review agents are launched in parallel",
         "Report uses severity levels (critical/significant/minor)",
-        "Report ends by asking user to choose review type (approve/request-changes/comment-only) before posting"
+        "Report ends with an explicit recommended review action (e.g. request-changes) plus a confirmation prompt, and waits for the user before posting"
       ]
     },
     {
@@ -26,7 +26,7 @@
         "Report flags sequential awaits in getBlogPage and suggests Promise.all, ideally referencing the existing pattern in dashboard.ts",
         "Report flags the TOCTOU pattern with fs.existsSync checks before fs.mkdirSync/fs.copyFileSync",
         "Reuse finding points to the specific path src/utils/string.ts",
-        "Report uses severity levels and waits for user to choose review type before posting"
+        "Report uses severity levels, ends with an explicit recommended review action plus a confirmation prompt, and waits for the user before posting"
       ]
     },
     {

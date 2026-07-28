@@ -2,7 +2,7 @@
 
 ## Description
 
-review-github-pr runs a structured GitHub pull request review for developers: it fetches the PR diff via the gh CLI, runs the project's automated checks, launches three parallel review agents (correctness, convention compliance, efficiency), validates every finding against the actual code, and drafts a severity-grouped review for the user to approve before posting.
+review-github-pr runs a structured GitHub pull request review for developers: it fetches the PR diff via the gh CLI, runs the project's automated checks, launches three parallel review agents (correctness, convention compliance, efficiency), validates every finding against the actual code, and drafts a severity-grouped review with a recommended action (approve / request-changes / comment-only) for the user to approve before posting; findings are posted as inline comments anchored to the diff.
 
 This skill is ready for commercial and non-commercial use.
 
@@ -16,7 +16,7 @@ MIT-0 when installed from ClawHub (registry-wide license for all published skill
 
 ## Use Case
 
-Developers and teams who want rigorous, evidence-backed code review of GitHub pull requests. Invoke it with a PR number, a PR URL, or from a checked-out PR branch; it produces a validated review draft and, only after explicit confirmation, posts it with gh pr review.
+Developers and teams who want rigorous, evidence-backed code review of GitHub pull requests. Invoke it with a PR number, a PR URL, or from a checked-out PR branch; it produces a validated review draft with a recommended action and, only after explicit confirmation, posts a single review via the GitHub reviews API with findings as inline diff comments.
 
 ## Deployment Geography for Use
 
@@ -37,7 +37,7 @@ Do not include secrets in prompts, logs, or output; use least-privilege credenti
 
 Risk: The skill runs gh commands that post review comments (approve, request-changes, or comment) on real pull requests under the user's GitHub identity.
 
-Mitigation: The workflow hard-stops after the review draft and requires an explicit user confirmation ("Post this review?") before any gh pr review command runs; nothing is auto-posted.
+Mitigation: The workflow hard-stops after the review draft and requires an explicit user confirmation of the recommended action before any review-posting command runs; nothing is auto-posted.
 
 Risk: The skill processes untrusted PR content (diffs, descriptions, commit messages) that may contain prompt-injection text or embedded commands.
 
@@ -56,15 +56,15 @@ Mitigation: Clones are shallow (--depth=50), code is read but not executed beyon
 
 Output type(s): A severity-grouped PR review draft (Critical / Significant / Minor findings with file:line citations and suggestions), followed by an optional posted GitHub review after user confirmation.
 
-Output format: Markdown review draft in the conversation; posted review body via gh pr review.
+Output format: Markdown review draft in the conversation; posted as one GitHub review (via the reviews API) whose body is a short summary and whose findings are inline comments anchored to diff lines.
 
-Output parameters: Findings cite path/to/file:line, a category tag ([Correctness], [Convention], [Design], etc.), rationale, and a suggestion; the draft ends with a post-confirmation prompt.
+Output parameters: Findings cite path/to/file:line, a category tag ([Correctness], [Convention], [Design], etc.), rationale, and a suggestion; the draft ends with a recommended action (approve / approve-with-comments / request-changes / comment-only) and a post-confirmation prompt.
 
 Other properties: Side effect on confirmation only - posts a review to the target GitHub PR. Every finding is validated against actual code before presentation; unvalidated findings are dropped.
 
 ## Skill Version
 
-0.3.1
+0.4.0
 
 ## Ethical Considerations
 

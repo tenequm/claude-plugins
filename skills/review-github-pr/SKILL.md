@@ -1,8 +1,8 @@
 ---
 name: review-github-pr
-description: GitHub PR code review - fetches the diff, runs automated checks, launches 3 parallel review agents (correctness, convention compliance, efficiency) to analyze changes, validates findings against actual code, and drafts a GitHub review. Use when reviewing pull requests. Triggers on "review this PR", "review PR #123", "review github.com/owner/repo/pull/N", "check this pull request", "review changes in PR", "give feedback on this PR", "PR review", "look at this pull request".
+description: GitHub PR code review - fetches the diff, runs automated checks, launches 3 parallel review agents (correctness, convention compliance, efficiency) to analyze changes, validates findings against actual code, and drafts a GitHub review with a recommended action (approve / request-changes / comment-only) that posts findings as inline comments on the diff. Use when reviewing pull requests. Triggers on "review this PR", "review PR #123", "review github.com/owner/repo/pull/N", "check this pull request", "review changes in PR", "give feedback on this PR", "PR review", "look at this pull request".
 metadata:
-  version: "0.3.1"
+  version: "0.4.0"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/review-github-pr
     emoji: "🔍"
@@ -187,12 +187,58 @@ Severity guide:
 
 If zero issues found, report "LGTM - no issues found."
 
-The review draft MUST end with: **"Post this review? (approve / request-changes / comment-only)"** and wait for the user to confirm. Do not post until the user responds.
+The review draft MUST end with a recommended action and a confirmation prompt. Derive the action from the validated findings:
+
+- **request-changes**: any critical finding
+- **comment-only**: significant findings worth discussing, but nothing that blocks merge
+- **approve-with-comments**: only minor / nice-to-have findings
+- **approve**: zero findings
+
+Close the draft with both lines:
+
+```
+**Recommendation: <action>** - <one sentence why, tied to the top finding>
+
+Post this review as <action>? (or pick: approve / approve-with-comments / request-changes / comment-only)
+```
+
+Wait for the user to confirm. Do not post until the user responds.
 
 ## Phase 6: Post Review
 
-After user confirms and chooses the review type:
+After the user confirms, post ONE review with every finding attached as an inline comment anchored to its file and line. Never put per-finding detail only in the review body, and never submit the review first and attach comments afterward - late-attached comments create empty orphan review shells on the PR. The review body is a short summary only: finding counts plus anything with no line anchor (e.g. failed automated checks); each finding lives in `comments[]`.
 
-1. Post the review via `gh pr review <number>` with the appropriate flag (`--approve`, `--request-changes`, or `--comment`) and `--body` containing the review text. For multi-line reviews, pass the body via HEREDOC. If using Mode 2 (cloned to /tmp), add `-R owner/repo`.
+`gh pr review` cannot attach inline comments, so build a JSON payload and submit through the reviews API in a single call:
 
-2. Confirm to the user what was posted. If Mode 2 was used, mention the temp clone path so the user can clean it up if desired.
+```bash
+cat > /tmp/pr-review.json <<'EOF'
+{
+  "event": "REQUEST_CHANGES",
+  "body": "1 critical, 1 minor - details inline on the diff.",
+  "comments": [
+    {
+      "path": "src/main.rs",
+      "line": 1653,
+      "side": "RIGHT",
+      "body": "[Correctness] `fmt::layer()` defaults to stdout, moving all tracing output onto the JSON-RPC channel.\n\n```suggestion\n        .with(fmt::layer().with_writer(std::io::stderr))\n```"
+    },
+    {
+      "path": "src/main.rs",
+      "start_line": 1651,
+      "line": 1654,
+      "side": "RIGHT",
+      "body": "[Convention] The stderr choice deserves a WHY comment - it is the only thing keeping stdout clean for JSON-RPC."
+    }
+  ]
+}
+EOF
+gh api repos/{owner}/{repo}/pulls/<number>/reviews --input /tmp/pr-review.json
+```
+
+- `event` is `APPROVE`, `REQUEST_CHANGES`, or `COMMENT`. Map the confirmed action: approve-with-comments = `APPROVE` with populated `comments[]`; comment-only = `COMMENT`
+- `line` + `side: "RIGHT"` anchors to the new side of the diff; add `start_line` for a multi-line range. Anchors must be lines present in the diff - a finding with no diff anchor goes in the body instead
+- Use `suggestion` fenced blocks (as in the example above) for small committable fixes so the author can one-click apply
+- `gh api` fills `{owner}/{repo}` from the current repo; in Mode 2 (cloned to /tmp) spell them out explicitly
+- Plain approve with zero findings needs no payload: `gh pr review <number> --approve --body "LGTM"`
+
+Confirm to the user what was posted, linking the review. If Mode 2 was used, mention the temp clone path so the user can clean it up if desired.
