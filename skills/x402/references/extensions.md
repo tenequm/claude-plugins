@@ -114,6 +114,13 @@ Go: `bazaar.WithBazaar(facilitatorClient)` then `facilitator.ListDiscoveryResour
 GET /discovery/resources?type=http&limit=10&offset=0
 ```
 
+### Troubleshooting: Why a Service Is Not in the Catalog
+
+Whether and how a resource appears in a facilitator's catalog is an implementation detail of the **facilitator operator**, not something a server controls. Two consequences catch people out:
+
+- **A server-side declaration alone catalogs nothing.** Cataloging happens when a facilitator processes a `PaymentPayload` that includes the echoed `bazaar` extension - so a route nobody has paid for yet will not appear, no matter how it is declared.
+- **A missing `EXTENSION-RESPONSES` header is not a failure signal.** Facilitators *may* return it; its absence carries no meaning.
+
 ---
 
 ## Offer-Receipt (Signed Attestations)
@@ -170,6 +177,15 @@ const valid = verifyReceiptMatchesOffer(receipt, decoded[0], [myWalletAddress]);
 ### DID Key Resolution
 
 `extractPublicKeyFromKid(kid)` supports `did:key` (Ed25519, secp256k1, P-256), `did:jwk`, and `did:web` (fetches `/.well-known/did.json`).
+
+### Signer Authorization (not just signature validity)
+
+Verifiers MUST distinguish between **signature validity** and **signer authorization**. A valid signature proves a specific key signed the artifact; it does not prove that key was authorized to sign on behalf of the service identified by `resourceUrl`. Two authorization mechanisms are specified:
+
+- `did:web` resolution against the service domain
+- DNS TXT records at `_controllers.<domain>` carrying `v=1;controller=did:pkh:...`
+
+Checking only the signature leaves a receipt forgeable by anyone who can produce a well-formed signature over the offer.
 
 ---
 
@@ -234,13 +250,42 @@ CAIP-122 wallet-based authentication. Clients prove wallet ownership by signing 
 ### Server
 
 ```typescript
-import { declareSIWxExtension, siwxResourceServerExtension } from "@x402/extensions/sign-in-with-x";
+import { createSIWxResourceServerExtension, declareSIWxExtension } from "@x402/extensions/sign-in-with-x";
 
-extensions: { ...declareSIWxExtension({ domain: "example.com", statement: "Sign in" }) }
-server.registerExtension(siwxResourceServerExtension);
+// Declare on the route - no `domain`, no `resourceUri`
+extensions: { ...declareSIWxExtension({ statement: "Sign in", expirationSeconds: 300 }) }
+
+// Register with an operator-configured public origin (required)
+server.registerExtension(
+  createSIWxResourceServerExtension({ origin: "https://api.example.com" }),
+);
 ```
 
+`DeclareSIWxOptions` now carries only `statement`, `version`, `network`, and `expirationSeconds`.
+
+> **Security: origin binding.** `origin` is required and must be the external, browser-visible origin - not the upstream listener address behind a reverse proxy. The server validates `domain` and the `uri` origin against this configured value, **not** against request-derived values such as the `Host` header; deriving trust from request headers allowed a signature made for another site to be replayed. The `uri` origin must match exactly (scheme, host, and port) - the check was tightened from a prefix match.
+
 Client sends `SIGN-IN-WITH-X` HTTP header (Base64-encoded JSON with signature).
+
+### Breaking: result shapes
+
+SIWx validation and verification results are discriminated unions across all three SDKs. The old `{ valid, error, address }` shape is gone:
+
+```typescript
+type SIWxValidationResult =
+  | { isValid: true }
+  | { isValid: false; invalidReason: SIWxValidationCode; invalidMessage: string };
+```
+
+Verify success carries `payer`, not `address`. Python uses `is_valid` / `invalid_reason` / `invalid_message` / `payer`. Go moved `Origin` onto `CreateResourceServerExtension()` and removed `Domain` / `ResourceURI` from `DeclareOptions`. These shipped as **minor** releases, not major.
+
+### SIWx error codes
+
+Validation: `invalid_siwx_domain_mismatch`, `invalid_siwx_uri_mismatch`, `invalid_siwx_issued_at`, `invalid_siwx_issued_at_too_old`, `invalid_siwx_issued_at_in_future`, `invalid_siwx_expiration_time`, `invalid_siwx_expired`, `invalid_siwx_not_before`, `invalid_siwx_not_yet_valid`, `invalid_siwx_nonce`.
+
+Verification: `invalid_siwx_signature`, `invalid_siwx_chain_id`, `invalid_siwx_unsupported_chain`, `invalid_siwx_malformed_signature`, `invalid_siwx_verifier_error`.
+
+Solana SIWx verification rejects small-order Ed25519 public keys (tweetnacl accepted identity-point forgeries).
 
 ---
 
@@ -283,7 +328,9 @@ Go: `erc20approvalgassponsor.DeclareExtension()`
 
 ## Builder Code (On-Chain Attribution)
 
-The `builder-code` extension enables on-chain attribution tracking for x402 payments. Attribution is encoded as an ERC-8021 Schema 2 CBOR "builder code" appended to the settlement transaction calldata via the EVM `calldataSuffix`/`dataSuffix` plumbing, so integrators and tooling can be credited for the payments they originate (app, service, and wallet parties can each attach a code). The service-code field `s` accepts multiple codes (a string or an array / `[]string`), so layered clients (e.g. an MCP middleware) can attribute several participants on-chain. SDK helpers: TypeScript (`@x402/extensions/builder-code`) and Go (`go/v2/extensions/buildercode`, `DeclareBuilderCodeExtension` + client/server/facilitator + CBOR). Python helper pending. See `specs/extensions/builder_code.md`.
+The `builder-code` extension enables on-chain attribution tracking for x402 payments. Attribution is encoded as an ERC-8021 Schema 2 CBOR "builder code" appended to the settlement transaction calldata via the EVM `calldataSuffix`/`dataSuffix` plumbing, so integrators and tooling can be credited for the payments they originate (app, service, and wallet parties can each attach a code). The service-code field `s` accepts multiple codes (a string or an array / `[]string`), so layered clients (e.g. an MCP middleware) can attribute several participants on-chain. **Capped at 5** (`MAX_SERVICE_CODES`): facilitators silently truncate excess entries, so a sixth code is dropped without error. Note this cap is an implementation constant - it does not appear in `specs/extensions/builder_code.md`.
+
+SDK helpers: TypeScript (`@x402/extensions/builder-code`), Go (`go/v2/extensions/buildercode`, `DeclareBuilderCodeExtension` + client/server/facilitator + CBOR), and Python (`x402.extensions.builder_code`). See `specs/extensions/builder_code.md`.
 
 ## HTTP Message Signatures (Agent Identity)
 
@@ -300,11 +347,12 @@ The `auth-hints` extension provides authentication hints for specific payment re
 | Extension | TypeScript | Go | Python |
 |-----------|------------|-----|--------|
 | bazaar | Yes | Yes | Yes |
+| bazaar (facilitator client - search) | Yes | Yes | Yes |
 | offer-receipt | Yes | No | No |
 | sign-in-with-x | Yes | Yes | Yes |
 | payment-identifier | Yes | Yes | Yes |
 | eip2612GasSponsoring | Yes | Yes | Yes |
 | erc20ApprovalGasSponsoring | Yes | Yes | Yes |
-| builder-code | Yes | Yes | No |
+| builder-code | Yes | Yes | Yes |
 
-The `http-message-signatures` and `auth-hints` extensions are defined in the protocol spec but do not yet have SDK helpers in any language. `builder-code` now ships TypeScript and Go helpers (Python pending).
+The `http-message-signatures` and `auth-hints` extensions are defined in the protocol spec but do not yet have SDK helpers in any language. `builder-code` now ships all three (Python landed as `x402.extensions.builder_code` plus `x402.mechanisms.evm.data_suffix`).

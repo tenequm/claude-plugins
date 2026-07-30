@@ -7,7 +7,8 @@ All three x402 roles (client, server, facilitator) support lifecycle hooks for l
 ### x402ResourceServer (Transport-agnostic)
 
 * **onBeforeVerify** - Runs before payment verification. Return `{ abort: true, reason }` to reject.
-* **onAfterVerify** - Runs after successful verification.
+* **onAfterVerify** - Runs after successful verification. May also return `{ abort: true, reason, message? }` to reject the payment *after* it verified. When a hook aborts here, `onVerifiedPaymentCanceled` is dispatched with reason `after_verify_aborted` so schemes can release any reserved state.
+* **onVerifiedPaymentCanceled** - Runs when a verified payment is cancelled. Fires at most once per payment. Use it to clear reservations a scheme took during verification.
 * **onVerifyFailure** - Runs on verification failure. Return `{ recovered: true, result }` to override.
 * **onBeforeSettle** - Runs before settlement. Return `{ abort: true, reason }` to reject.
 * **onAfterSettle** - Runs after successful settlement.
@@ -228,7 +229,8 @@ Sync variants: `x402ResourceServerSync`, `x402ClientSync`, `x402FacilitatorSync`
 | Client: onPaymentRequired (HTTP) | Yes | No | No |
 | Client: registerExtension | Yes | Yes | No |
 | Server: onBeforeVerify | Yes | Yes | Yes |
-| Server: onAfterVerify | Yes | Yes | Yes |
+| Server: onAfterVerify (abortable) | Yes | Yes | Yes |
+| Server: onVerifiedPaymentCanceled | Yes | Yes | Yes |
 | Server: onVerifyFailure | Yes | Yes | Yes |
 | Server: onBeforeSettle | Yes | Yes | Yes |
 | Server: onAfterSettle | Yes | Yes | Yes |

@@ -7,6 +7,44 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-30
+
+### Added
+- `@x402/near` (NEAR exact via NEP-366 SignedDelegate + NEP-141 `ft_transfer`, relayer-sponsored gas, `near:mainnet`/`near:testnet`) and `@x402/xrpl` (XRPL exact, `xrpl:0`/`xrpl:1`/`xrpl:2`), each with a per-chain reference doc. NEAR is published on npm; XRPL is tagged 2.20.0 but not yet published.
+- Network: Igra mainnet (`eip155:38833`, USDC, Permit2 only - the token implements neither EIP-3009 nor EIP-2612).
+- `extra.facilitatorAddress` - required by the upto client and embedded in the Permit2 witness as `witness.facilitator`.
+- SVM `extra.recentBlockhash` / `extra.lastValidBlockHeight` transaction-construction hints (TS, Go, Python; non-binding).
+- `onAfterVerify` can now abort, dispatching `onVerifiedPaymentCanceled` with reason `after_verify_aborted`.
+- Wallet compatibility: ERC-6492 counterfactual wallets are **not** supported on the Permit2 path; a token whose EIP-3009 implementation only calls `ecrecover` fails every non-EOA wallet type; `payerAuthorizer` must be an EOA.
+- Spec-stage schemes Starknet and Casper; draft SVM `upto` binding via the Solana payment-channels program.
+- Error codes: 15 `invalid_siwx_*`, two batch-settlement codes, `invalid_exact_stellar_payload_fee_exceeds_maximum`, `invalid_exact_hedera_payload_signature_invalid`, `UnauthorizedFacilitator`.
+- Bazaar catalog-visibility troubleshooting; offer-receipt signer *authorization* (`did:web`, DNS TXT `_controllers.<domain>`); `builder-code` service codes capped at 5 and silently truncated.
+- Third-party SDK and facilitator directories; Slack replaced Discord as the community channel.
+- Operational guidance from field use: SVM `maxTimeoutSeconds` above ~90s is unenforceable (blockhash lifetime); both payer and `payTo` ATAs must exist; `SettlementCache` rejection is client-visible and only successful settlements should be cached; browser clients must expose the un-prefixed V2 CORS headers; server-side scheme registration does not create a local verify path; a single-EOA facilitator must serialize its own settles because settle-time simulation cannot detect nonce races; set `Content-Type` explicitly on payment-wrapped fetch bodies.
+
+### Changed
+- SDK versions: TypeScript 2.17.0 -> 2.20.0, Python 2.14.0 -> 2.17.0, Go v2.17.0 -> v2.20.0.
+- Default facilitator now also covers Algorand Testnet and XRPL Testnet, and advertises `upto` + `batch-settlement` on Base Sepolia alongside three extensions; upstream now documents it as dev/testnet only, not a production default.
+- NEAR moved from spec-stage to a shipped TypeScript SDK; the spec-only chain list is now Cardano, Sui, Starknet, and Casper.
+- Python extras: added `evm`, `tvm`, and the `clients` / `servers` / `mechanisms` bundles.
+
+### Fixed
+- **Breaking for signers:** the `upto` Permit2 witness struct was wrong - it omitted the mandatory `facilitator` field and carried a phantom `bytes extra`. The EIP-712 type list and witness type string were wrong to match. A client signing the documented struct produced a digest the contract cannot verify, so every upto payment would fail.
+- Algorand CAIP-2 identifiers are the URL-safe base64 genesis hash truncated to the first 32 characters; the previous padded full-hash form no longer matches.
+- The Permit2 allowance error is `permit2_allowance_required` on the wire, not `PERMIT2_ALLOWANCE_REQUIRED`.
+- SIWx examples: `siwxResourceServerExtension` does not exist (it is `createSIWxResourceServerExtension`, which requires an operator-configured `origin`), and `domain` / `resourceUri` were removed from the declare options.
+- Replaced the dead `x402.org/ecosystem` link (hard 404) with the docs facilitator directory.
+- `builder-code` now ships Python; the support matrix said pending.
+- `createAuthHeaders` must return an object keyed by facilitator path - a flat object previously dropped authentication silently and now throws.
+
+### Security
+- SIWx binds to an operator-configured `origin` instead of request-derived values; deriving the domain from the `Host` header allowed a signature made for another site to be replayed. The `uri` origin check tightened from prefix to exact match.
+- Batch-settlement EVM: unauthenticated path traversal and pre-verification channel mutation fixed across all three SDKs.
+- SIWx Solana rejects small-order Ed25519 public keys; Hedera facilitators must cryptographically verify the payer signed the frozen transaction body; Aptos verification must not rely on simulation; Stellar facilitators must not use the client's fee bid.
+- Solana settlement is not settled until the transaction status confirms it: `skipPreflight` submission plus swallowed confirmation errors reports success for transactions that landed with `meta.err` set.
+
+Verified against: @x402/core@2.20.0, @x402/evm@2.20.0, x402@2.17.0, github.com/x402-foundation/x402/go/v2@v2.20.0
+
 ## [0.10.2] - 2026-07-22
 
 ### Added

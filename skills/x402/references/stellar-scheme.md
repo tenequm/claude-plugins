@@ -58,6 +58,7 @@ Default facilitator (`https://x402.org/facilitator`) supports Stellar Testnet.
 
 - Base fee: 10,000 stroops (0.001 XLM) minimum
 - Default max facilitator fee: 50,000 stroops
+- **The facilitator MUST NOT use the client's fee bid when rebuilding the transaction.** It derives the settlement fee from a fresh simulation at settle time: `simulationResourceFee + inclusionBuffer`, where the inclusion buffer MUST be at least 100 stroops. A client fee bid above `maxTransactionFeeStroops` is rejected with `invalid_exact_stellar_payload_fee_exceeds_maximum`
 - Ledger-based expiration: `currentLedger + ceil(maxTimeoutSeconds / estimatedLedgerCloseTime)`
 - Signature expiration ledger tolerance: 2 ledgers (for RPC skew)
 

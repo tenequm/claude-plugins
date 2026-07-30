@@ -157,9 +157,17 @@ ERC-6492 verification simulates a counterfactual smart-wallet's deploy factory b
 - An empty or omitted list **disables** counterfactual ERC-6492 deployment entirely and returns `eip6492_factory_not_allowed`.
 - The previous `DeployERC4337WithEIP6492` boolean config field was **removed** across all three SDKs (breaking for facilitator implementers that deployed ERC-4337 smart wallets via EIP-6492).
 
-### Wallet Compatibility (2.17.0)
+### Wallet Compatibility
 
-Payments verify and settle consistently across plain EOAs, deployed smart accounts (ERC-4337 / ERC-7579), counterfactual ERC-6492 wallets, and ERC-7702-delegated EOAs. Pre-verification now mirrors on-chain signature checking, so a payment that passes `verify` is the same one that succeeds at `settle`. ERC-6492 counterfactual support covers both the `exact` and `batch-settlement` flows.
+Payments verify and settle consistently across plain EOAs, deployed smart accounts (ERC-4337 / ERC-7579), counterfactual ERC-6492 wallets, and ERC-7702-delegated EOAs. Pre-verification mirrors on-chain signature checking, so a payment that passes `verify` is the same one that succeeds at `settle`.
+
+**Not every wallet type works on every path.** The combination that catches people out:
+
+- **ERC-6492 counterfactual + Permit2 (`exact`, `upto`, or `batch` deposit) is NOT supported.** Permit2's `permitWitnessTransferFrom` calls `isValidSignature` on the payer at settlement, and the Permit2 path does not deploy the wallet first. ERC-6492 counterfactual support covers `exact` (EIP-3009) and `batch-settlement`, not the Permit2 routes.
+- **The token itself can veto smart-wallet payments.** If a token's EIP-3009 implementation only calls `ecrecover`, every non-EOA wallet type fails on-chain no matter how x402 is configured - this is a property of the deployed token, not of the SDK.
+- **`payerAuthorizer` must be an EOA address.**
+
+Upstream publishes a full wallet-type (A-E) support matrix and a three-step wallet-type detection procedure at [docs.x402.org/advanced-concepts/wallet-compatibility](https://docs.x402.org/advanced-concepts/wallet-compatibility).
 
 ## Verify-Time Guards
 
@@ -192,6 +200,9 @@ When a server uses price string syntax (`"$0.001"`), the SDK resolves to the cha
 | Mezo Mainnet (`eip155:31612`) | Mezo USD (mUSD) | `0xdD468A1DDc392dcdbEf6db6e34E89AA338F9F186` | 18 | Permit2 | Yes |
 | XDC Network (`eip155:50`) | USDC (Bridged) | `0xfA2958CB79b0491CC627c1557F441eF849Ca8eb1` | 6 | EIP-3009 | - |
 | XDC Apothem (`eip155:51`) | USDC (Bridged) | `0xb5AB69F7bBada22B28e79C8FFAECe55eF1c771D4` | 6 | EIP-3009 | - |
+| Igra Mainnet (`eip155:38833`) | USDC | `0xA5b8BF902b2844dA17d4506cc827F7F1681735E7` | 6 | Permit2 | No |
+
+Igra's USDC implements **neither EIP-3009 nor EIP-2612**, so it is Permit2-only and cannot use either gasless path - the payer needs a one-time direct `approve(Permit2, ...)` transaction.
 
 ### Custom Tokens with registerMoneyParser
 

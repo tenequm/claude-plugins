@@ -58,6 +58,17 @@ PAYMENT-RESPONSE: eyJzdWNjZXNzIjpmYWxzZSwiZXJyb3JSZWFzb24iOi...
 
 On failure, the `PAYMENT-RESPONSE` header still contains the settlement result (with `success: false` and `errorReason`).
 
+Note that a bare `402` is ambiguous to clients - it cannot distinguish "you did not pay" from "your valid payment failed to settle". Always attach the `PAYMENT-RESPONSE` header on settlement failure so the client can tell the two apart and retry correctly.
+
+### Browser Clients: CORS Header Exposure
+
+A browser-based buyer cannot read the payment headers unless the server exposes them by their **V2, un-prefixed** names. The V1 `X-`-prefixed names are not interchangeable, and a server still listing them against a V2 SDK produces a silent failure: the wrapper cannot read `PAYMENT-REQUIRED` and throws "failed to parse payment requirements", or the retry's `PAYMENT-SIGNATURE` is stripped.
+
+```
+Access-Control-Expose-Headers: PAYMENT-REQUIRED, PAYMENT-RESPONSE
+Access-Control-Allow-Headers:  PAYMENT-SIGNATURE
+```
+
 ### HTTP Error Mapping
 
 | x402 Error | HTTP Status |
