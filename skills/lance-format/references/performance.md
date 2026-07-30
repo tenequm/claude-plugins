@@ -1,8 +1,14 @@
 # Lance performance - combined reference
 
-All official performance guidance from the Lance docs (`lance-format/lance@v9.1.0-beta.8`,
+All official performance guidance from the Lance docs (`lance-format/lance@v10.0.0-beta.7`,
 `docs/src/`) collected in one place (Part A, verbatim with sources noted), followed by
 field-verified practices from running Lance against remote object storage (Part B).
+
+Note on provenance: `docs/src/guide/performance.md` is byte-unchanged between
+`v9.1.0-beta.8` and `v10.0.0-beta.7`, so Part A's official text is current as written. The
+"Performance changes not in the guide" subsection at the end of Part A is derived from the
+v10 source and commit history rather than the guide - it is labeled as such because upstream
+has not documented it in the performance guide yet.
 
 Related verbatim references in this skill: `docs/` (the full official doc mirror, including
 per-index storage/memory/training costs in `docs/format/index/scalar/fts.md` and
@@ -104,7 +110,7 @@ debugging query performance.
 | `lance::execution` | `parts_loaded`      | The number of index partitions loaded by the plan              |
 | `lance::execution` | `index_comparisons` | The number of comparisons performed inside the various indices |
 
-### OpenTelemetry metrics (v9.1)
+### OpenTelemetry metrics
 
 Beyond the trace events above, Lance can export metrics through the `metrics` crate facade
 (Rust `metrics` feature). The `pylance` wheels are built with the `metrics` feature enabled:
@@ -557,6 +563,48 @@ new value will be considered part of the unindexed set.
 If two CreateIndex operations are committed concurrently then it is allowed. If the indexes have different names this is no
 problem. If the indexes have the same name then the second operation will win and replace the first.
 
+## Performance changes not in the guide (v10, source-derived)
+
+These are upstream performance behaviors verified against the `v10.0.0-beta.7` source and
+commit history. They are **not** in `docs/src/guide/performance.md` - upstream has not
+documented them there - so treat this subsection as source-derived rather than official text.
+
+**The cache backend changed, and it can silently refuse entries.** quick_cache is now the
+default for both the index cache and the metadata cache, hard-wired in `Session::new` with no
+env var or Cargo feature to opt out (PR #7953, #8013). quick_cache splits its weight budget
+evenly across shards with no borrowing and **silently refuses entries heavier than a shard's
+share**. Shards are `min(cpus / 2, capacity / 4 GiB)`, floor 1, so on a small-CPU or
+small-capacity configuration a large index partition may never cache at all - with no error and
+no log line, only a persistent miss. If a partition looks uncacheable, compute the per-shard
+share before tuning anything else. Measured FTS gain at concurrency 128: 180.7 -> 1340.6 qps,
+710 -> 96 ms, 47% -> 93% CPU.
+
+Cache keys also became opaque 16-byte BLAKE3 digests (`CACHE_KEY_FORMAT = "blake3-128-v1"`,
+PR #7878) with **no legacy fallback** - every warm or persisted cache cold-misses once after
+the upgrade. Budget for one cold window when rolling v10 out; do not read it as a regression.
+
+**FTS query concurrency.** `LANCE_FTS_SEARCH_CHUNK` (default 16, min 1) sets how many
+partitions are searched per CPU-pool task; chunking stops query concurrency from flooding the
+pool with one small task per partition. Measured 227 -> 428 qps at concurrency 16. `=1` restores
+the old per-partition shape. This is one of the few store-adjacent knobs worth knowing exists -
+the default is right in the common case.
+
+**FTS row-id resolution moved after the global top-k merge** (PR #7897): at most `limit` lookups
+per query instead of per-partition. 4.1 -> 107.7 qps (26x), 3.9 s -> 148 ms on a 100M-doc
+benchmark. The tradeoff is memory: each partition's ROW_ID column is now a separate weighed
+index-cache entry at ~8 bytes/doc per partition (~800 MB for a 100M-doc index), and it now
+counts against `index_cache_size_bytes`. Size the index cache accordingly.
+
+**Segment commit LISTs concurrently** (PR #7657) - measured ~8x faster against remote storage
+(2837 ms -> 350 ms at 128 segments, 20 ms RTT). This is a pure win requiring no action, but it
+changes the shape of index-commit latency, so re-baseline before comparing against pre-v10
+numbers.
+
+**Compaction can now skip row-address map construction** entirely when no remappable data index
+exists - FRI-only and system-index-only datasets included (PR #7778). If compaction was
+previously dominated by the `_rowid` scan and RoaringTreemap build on such a dataset, that cost
+is gone.
+
 ---
 
 # Part B: Field-verified remote-storage practices
@@ -603,6 +651,25 @@ fewer round trips.
   constraint - OCC does not conflict two writers inserting the same new key. Retry only
   on genuine commit-conflict errors, and verify with `COUNT(*)` vs `COUNT(DISTINCT pk)`,
   not just missing-row checks.
+- **Match Lance's typed conflict errors before wrapping them.** `CommitConflict`,
+  `RetryableCommitConflict`, and `TooMuchWriteContention` are distinct variants
+  (`rust/lance-core/src/error.rs:176,193,202`). Erasing them into an opaque application error
+  early - `anyhow`, a generic `Storage` variant - makes every exhausted retry indistinguishable
+  from a storage outage, and the retry loop can no longer tell "rebase and try again" from
+  "give up". Match at the Lance boundary, not after three layers of `?`.
+- **`merge_insert` silently changes execution mode with the source schema shape.** When the
+  source schema is a strict subset of the target's and unmatched rows are kept, the builder
+  routes to `RewriteColumns` (a cheap column update) rather than rewriting whole fragments
+  (`rust/lance/src/dataset/write/merge_insert.rs:2232-2260`). Passing a full-schema source for
+  what is logically a two-column update therefore costs dramatically more, with no warning.
+  Project the source down to the key plus the columns actually being updated.
+- **Local-filesystem durability is delegated, not added.** Lance's `file://` store is
+  `object_store::LocalFileSystem` (`rust/lance-io/src/object_store/providers/local.rs:26`,
+  `object_store 0.13.2`); Lance issues no fsync of its own on the commit path. Whatever
+  crash-durability guarantee you get on a local dataset is that crate's, so do not assume a
+  returned commit means the manifest bytes survived a power loss. On a machine that can lose
+  power mid-commit, treat a local Lance dataset as needing the same verify-by-scan recovery
+  posture you would give any unsynced write path.
 
 ## Index maintenance
 
@@ -619,10 +686,27 @@ fewer round trips.
   versions), not O(delta): it consumed 8.8 s (58%) of a 200-row incremental sync and gets
   slower as versions pile up. Gating it on `dataset.version_id() % N` cut cleanup walks
   by ~87% with no behavior change.
-- **"Pending cleanup" bytes are the retention window, not bloat.** `cleanup_older_than`
-  defaults to ~1 hour, so versions younger than that are pinned by design and an optimize
-  pass legitimately reclaims zero. Never benchmark space reclamation on a store younger
-  than the retention window.
+- **"Pending cleanup" bytes are the retention window, not bloat.** Versions younger than the
+  retention window are pinned by design, so an optimize pass over a young store legitimately
+  reclaims zero. Know your actual window before calling it a leak: Python's
+  `cleanup_old_versions` defaults `older_than` to **14 days** when neither `older_than` nor
+  `retain_versions` is given (`python/python/lance/dataset.py:3113`), while automatic cleanup
+  uses whatever `lance.auto_cleanup.older_than` the dataset config carries - the docs example
+  sets `"3600s"` (`docs/src/guide/read_and_write.md:585`), which is where a "one hour" default
+  is easily misremembered from. Never benchmark space reclamation on a store younger than the
+  window actually in force.
+- **A second, independent floor: unverified files are held for 7 days.**
+  `UNVERIFIED_THRESHOLD_DAYS = 7` (`rust/lance/src/dataset/cleanup.rs:319`) is hardcoded. With
+  the default `delete_unverified=false`, any file not reachable from a manifest but newer than
+  7 days is treated as possibly-in-progress and refused for deletion **regardless of
+  `older_than`**. Shortening the retention window does not touch this floor, so a store can sit
+  well above its expected size for a week after heavy rewriting and still be behaving
+  correctly.
+- **A `replace=true` index rebuild roughly doubles store size until a later cleanup.**
+  `create_index(replace=True)` writes the new index set and leaves the entire superseded set on
+  disk as pending-cleanup - a measured rebuild roughly doubled both store size and object count
+  until the next cleanup pass. Provision headroom for a full extra index set before rebuilding,
+  and do not schedule a rebuild and a tight retention window against each other.
 - **Measure maintenance on the real remote store.** A full FTS consolidation rebuild
   measured ~1 min locally but 4.5-5 min (rewriting ~190 MB) against the remote store -
   round trips dominate. If a periodic rebuild can exceed your scheduler interval, rely on
@@ -651,6 +735,25 @@ fewer round trips.
   `LIKE '%needle%'`. The official substring answers are the NGRAM index (for
   `contains()`) and the FM-Index (v8+, exact-byte only, segmented, no BM25 ranking).
   Until one is built, narrow the scan with indexed/materialized predicates first.
+- **`Dataset::versions()` is O(history) remote reads, not a metadata lookup.** It lists
+  manifests and then **reads every one** to recover its timestamp
+  (`rust/lance/src/dataset.rs:2618-2635`, which carries an upstream
+  `// TODO: this API should support pagination`). On a dataset with hundreds of versions over
+  remote storage this is a fetch storm - it shows up in access logs as reads of historical
+  manifest versions in descending order. Use `version()` / the current manifest for "what
+  version am I on"; reserve `versions()` for genuine history browsing, and never put it on a
+  hot path or a health check.
+- **A bitmap index turns prefix `LIKE` into an error, not a scan fallback.** With a BITMAP
+  index on the column, `col LIKE 'prefix%'` fails with "LIKE prefix queries are not supported
+  for bitmap indexes" (`rust/lance-index/src/scalar/bitmap.rs:823`) rather than degrading to a
+  flat scan. Index choice can therefore *remove* a query shape that worked before the index
+  existed - if you need both set membership and prefix matching on one column, a bitmap index
+  alone is the wrong choice.
+- **A blob column in SQL is a `{position, size}` struct descriptor.** Any cast or text
+  operation on it surfaces as an opaque planner error (`Unsupported CAST from Struct(...) to
+  Utf8View`) with nothing pointing at blobs as the cause. Read blob payloads through the blob
+  APIs (`read_blobs` / `read_blob_ranges` / `take_blobs`) or
+  `scanner(blob_handling="all_binary")`, not through SQL projection.
 
 ## Version-specific behavior (verify on your exact pin)
 
@@ -676,6 +779,25 @@ not in release notes:
   unreadable after a bump. Treat any Lance major bump as an index-lifecycle event:
   re-validate fold, merge, compaction, and count behavior end-to-end on the exact pinned
   version rather than trusting API presence.
+- **A Lance major bump does not imply a redesign - or a small blast radius.** The major is
+  bumped automatically by `ci/publish_beta.sh` on any `breaking-change`-labeled PR, so v9 -> v10
+  is the *same dev line* renamed. Read the labeled PRs, not the version delta: v10's four are
+  the blob null-selection change, the cache-key change, the compaction remapper signature, and
+  the MemWAL rename.
+- **v10 cold-misses every cache once.** Cache keys became opaque BLAKE3 digests with no legacy
+  fallback (PR #7878), so the first run after upgrading re-populates warm and persisted caches
+  from scratch. Expect one slow window; do not chase it as a regression.
+- **v10 changed blob API return types to `Optional`** (PR #7903). Code that zipped blob results
+  positionally against its inputs was already wrong whenever a null blob appeared (results were
+  omitted, not `None`); after v10 it will not compile in Rust, and in Python it silently starts
+  yielding `None` entries. Audit blob call sites as part of the bump.
+- **v10 may reject a caller's "table not found" assumption.** The directory namespace no longer
+  reports transient storage failures as `TableNotFound` (PR #7931) - a create-or-open path that
+  treated that error as "absent" could previously overwrite a live table on a 503, and now sees
+  `Throttling` / `ServiceUnavailable` / `Internal` instead.
+- **crates.io carries finals only.** The newest published crate is `lance 9.0.0` (2026-07-24);
+  every beta and rc exists as a git tag with no crate. Pinning a beta means a git dependency,
+  which also means no crates.io yank signal if one turns out bad.
 
 ## Benchmarking traps
 

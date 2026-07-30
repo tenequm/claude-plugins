@@ -1,15 +1,15 @@
 ---
 name: lance-format
-description: Reference for Lance v9 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace (`lance`, `lance-table`, `lance-file`, `lance-encoding`, `lance-index`, `lance-io`, `lance-namespace`, and more). Use when building directly on the Lance crates - creating or reading `.lance` datasets, manifests, fragments, deletion files, the 2.x file format and structural encodings, vector / scalar / full-text / FM-Index / geo indexes, MemWAL streaming writes, optimistic-concurrency commits and commit handlers, schema evolution, versioning, time-travel, tags, branches, stable row IDs, namespaces, or object-store config. Triggers on lance crate, .lance file, lance dataset, lance file format, structural encoding, IVF_PQ, IVF_HNSW, IVF_RQ, RaBitQ, FM-Index, lance FTS, zonemap, MemWAL, OCC retry, lance schema evolution, lance namespace, pylance. This is the Lance format and engine (the `lance-format/lance` repo), not LanceDB the database product - but also the right reference for what LanceDB builds on.
+description: Deep reference for Lance v10 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace plus pylance. Covers the 2.x file format and structural encodings, the table format (manifests, fragments, transactions, OCC), vector / scalar / full-text indexes, MemWAL, schema evolution, time travel, namespaces, and object-store config. Use when building directly on the Lance crates or reading `.lance` datasets; this is the Lance format and engine (`lance-format/lance`), not the LanceDB product built on top of it.
 metadata:
-  version: "0.11.1"
-  upstream: "lance-format/lance@v9.1.0-beta.8"
+  version: "0.12.0"
+  upstream: "lance-format/lance@v10.0.0-beta.7"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/lance-format
     emoji: "🗄️"
 ---
 
-# Lance v9 reference
+# Lance v10 reference
 
 Lance is an open columnar format for multimodal AI - "a columnar data format that is 100x
 faster than Parquet for random access." It is not one format but a stack of interoperating
@@ -17,13 +17,22 @@ specs: a **file format**, a **table format**, **index formats**, **catalog specs
 **namespace client spec**. The Rust workspace at `lance-format/lance` implements all of them
 plus Python (`pylance`) and Java bindings.
 
-This skill tracks **`v9.1.0-beta.8`** (the `lance-format/lance` git tag), the current
-development frontier. Pin against tags, not `main` - Lance ships beta
-tags every few days and `next`-format encodings can change. v9.0.0 never got a final tag; the
-line reached **`v9.0.0-rc.2`** (2026-07-21) while `main` advanced to the `9.1.0-beta.*` dev
-series. **`v8.0.0` final shipped 2026-07-01** - if you need a stable pin rather than the v9
-dev betas, track `v8.0.0` (the last final), whose format and API are the frozen predecessor of
-what this reference describes.
+This skill tracks **`v10.0.0-beta.7`** (the `lance-format/lance` git tag), the current
+development frontier. Pin against tags, not `main` - Lance ships beta tags every few days and
+`next`-format encodings can change.
+
+**Which tag to pin.** Lance's release train bumps the major automatically: `ci/publish_beta.sh`
+compares the release root to HEAD and, if any PR in the range carries the GitHub
+`breaking-change` label, re-roots at `MAJOR+1`. That is what happened here - the `9.1.0-beta.*`
+dev line was mechanically renamed to `10.0.0-beta.*` on 2026-07-23 (`chore: bump to
+10.0.0-beta.1 based on breaking change detection`), so **`v9.1.0` was never tagged** and
+`v9.1.0-beta.8` is the direct ancestor of `v10.0.0-beta.7`. A major bump therefore signals "some
+labeled breaking change landed", not a redesign.
+
+**`v9.0.0` final shipped 2026-07-24 and is now the stable pin** (it supersedes `v8.0.0`,
+2026-07-01). It lives on the `release/v9.0` stabilization branch - already at `9.0.1-beta.0` -
+and is *not* an ancestor of `main`. crates.io carries **finals only** (currently `lance 9.0.0`);
+every beta and rc is a git tag with no published crate, so a beta pin means a git dependency.
 
 Three layers of reference, load what the task needs:
 
@@ -66,7 +75,7 @@ beneath it. Full table with descriptions and citations in `references/lance-refe
 | `lance-file` | File format - file reader/writer |
 | `lance-encoding` | Structural encodings, compression (internal, not for external use) |
 | `lance-index` | Scalar / vector / FTS / system indexes |
-| `lance-index-core` | Shared index primitives extracted from `lance-index` (new in v9.1, PR #7713) |
+| `lance-index-core` | Shared index primitives extracted from `lance-index` (new in the 9.1/10.0 dev line, PR #7713) |
 | `lance-io` | Object store, I/O schedulers |
 | `lance-core` | Shared `Error`/`Result`, cache, datatypes |
 | `lance-datafusion` | DataFusion glue (exec, expr, planner, UDFs) |
@@ -78,13 +87,13 @@ beneath it. Full table with descriptions and citations in `references/lance-refe
 | `lance-namespace` / `-impls` / `-datafusion` | Namespace trait, Directory/REST impls, DataFusion catalog bridge |
 | `lance-arrow`, `lance-tools`, `fsst`, `lance-bitpacking`, ... | Arrow extensions, CLI, compression sub-crates |
 
-All share `version = "9.1.0-beta.8"` except `lance-arrow-scalar`, which is pinned at
-`58.0.0` to track Arrow. Workspace: edition 2024, `rust-version = 1.91.0` (MSRV; the pinned
-build toolchain in `rust-toolchain.toml` moved to 1.97.0 in v9.1, PR #7712),
-`resolver = "3"`; notable deps arrow 58, datafusion 54 (bumped from 53 in v9.1, PR #7793),
-opendal 0.57, jieba-rs 0.10, `lance-namespace-reqwest-client` 0.8.6, itertools 0.14. Python
-bindings require **Python 3.10+** (3.9 dropped in v9, PR #7345; 3.14 support added in v9.1,
-PR #7728).
+All share `version = "10.0.0-beta.7"` except the two Arrow-tracking crates,
+`lance-arrow-scalar` and `lance-arrow-stats`, both pinned at `=58.0.0`. Workspace: edition
+2024, `rust-version = 1.91.0` (MSRV; the pinned build toolchain in `rust-toolchain.toml` is
+1.97.0, PR #7712), `resolver = "3"`; notable deps arrow 58, datafusion 54, opendal 0.57,
+`object_store` 0.13.2, jieba-rs 0.10, `lance-namespace-reqwest-client` 0.8.6, itertools 0.14,
+and **blake3 1.8.5** (new in v10, for the cache-key digest). Python bindings require
+**Python 3.10+** (3.9 dropped in v9, PR #7345; 3.14 supported, PR #7728).
 
 ## File format versions
 
@@ -98,7 +107,7 @@ dataset).
 | `2.0` | stable | Removed row groups; null support for lists/FSL/primitives |
 | `2.1` | **current default** (`stable`) | Adaptive structural encodings; better integer/string compression; nulls in struct fields; better nested random access. Default since Lance 5.0.0 |
 | `2.2` | unstable | Map type, Blob v2, `VariablePackedStruct`, larger mini-blocks. Required for Map and Blob v2; the real experimental frontier - encodings may still change |
-| `2.3` | unstable (`next`) | The current `next` alias target (`V2_3` in the enum). **No longer scaffolding** - as of v9.1 it ships **sparse structural pages** (`lance-encoding:structural-encoding=sparse`, PR #7889); `V2_3` references in `lance-encoding` jumped 6 -> 59. The docs version table now names it "sparse structural pages and other experimental encodings" |
+| `2.3` | unstable (`next`) | The current `next` alias target (`V2_3` in the enum). **No longer scaffolding** - ships **sparse structural pages** (PR #7889), which the 2.3 writer now **auto-selects** under a rep/def budget heuristic (PR #7756). The docs version table names it "sparse structural pages and other experimental encodings" |
 
 `stable` resolves to the default (2.1); `next` now resolves to **2.3** (not 2.2) in the
 running Lance release - pin an explicit number for deterministic behavior. In the version
@@ -107,9 +116,77 @@ table (`docs/src/format/file/versioning.md`) lists **2.3** as the unstable row a
 labels 2.2 unstable - and 2.3 now carries its own concrete experimental encoding (sparse
 pages), on top of the 2.2-era features (Map, Blob v2, `VariablePackedStruct`).
 
+**Sparse is no longer opt-in only.** As of v10 the 2.3 writer selects sparse on its own
+"when the dense mini-block repetition/definition budget would split the page or one top-level
+row exceeds that budget, and only when the value path is supported by the sparse writer"
+(`docs/src/format/file/encoding.md:373-376`). Unsupported paths - dictionary values,
+variable-width packed structs - stay dense, and 2.2-and-earlier writers never auto-select.
+The `lance-encoding:structural-encoding` field-metadata key (`miniblock`/`fullzip`/`sparse`)
+is now documented as **Force** a structural encoding rather than *select* one; auto-selection
+adds no wire-format field.
+
+Alongside this, v10 splits the version type in two: `LanceFileVersion` (in `lance-encoding`)
+keeps the release *selectors* `stable`/`next`, while the new `ConcreteFileVersion` (in
+`lance-file`) is the exact persisted identity - see `references/lance-reference.md` section 3.6.
+
+## What's new in v10
+
+The v10 line is the renamed continuation of the 9.1 dev train (see "Which tag to pin" above),
+78 commits from `v9.1.0-beta.8`. Structurally almost nothing moved: **26 crates**, **16
+transaction ops**, `CommitConfig.num_retries` **20**, file-format enum still `next => 2.3` /
+default 2.1, arrow 58 / datafusion 54 / opendal 0.57, MSRV 1.91.0. The weight is in **four
+labeled breaking changes** and a large body of index/cache work.
+
+**Breaking:**
+
+- **Blob APIs preserve null selections** (#7903) - the PR that triggered the major bump. Every
+  request now yields exactly one result, with a null blob returned as `None` instead of being
+  omitted. Rust `take_blobs*` -> `Vec<Option<BlobFile>>` and `ReadBlob::data` -> `Option<Bytes>`;
+  Python `read_blobs -> List[Tuple[int, Optional[bytes]]]`, `take_blobs -> List[Optional[BlobFile]]`;
+  Java lists may contain null elements. Existing call sites that indexed results positionally
+  against inputs were silently wrong before and must now handle `None`.
+- **Cache keys are an opaque 16-byte BLAKE3 digest** (#7878, `CACHE_KEY_FORMAT =
+  "blake3-128-v1"`). Every warm or persisted cache **cold-misses after upgrade** - there is no
+  legacy-key fallback. `CacheBackend::invalidate_prefix`, `LanceCache::keys`, and
+  `Session::{index,metadata}_cache_keys` are gone; `with_backend_and_prefix` becomes
+  `with_backend(...).with_key_prefix(...)`.
+- **`IndexRemapperOptions::create_remapper` is now async** and returns
+  `Result<Option<Box<dyn IndexRemapper>>>` (#7778) - `None` for datasets with no remappable
+  index, which lets compaction skip the `_rowid` scan entirely.
+- **MemWAL renamed its central primitive**: flushed MemTable / flushed generation -> **SSTable**,
+  merge -> **compaction**. This runs through the spec, Rust, Python, Java, and `protos/`
+  (`FlushedGeneration` -> `SsTable`, `MergedGeneration` -> `CompactedSsTable`,
+  `flushed_generations` -> `sstables`, `merged_generations` -> `compacted_sstables`).
+  Proto **field numbers are unchanged, so the wire format and on-disk layout are compatible** -
+  but every generated symbol and binding name changes, with no deprecation shims. Section 10.
+
+**Net-new:**
+
+- **`ConcreteFileVersion`** (#7879) - the exact persisted file identity, deliberately
+  *unordered* because "format capabilities are not implied by release order". Manifests now
+  reject selector aliases (`stable`, `next`). `LanceFileVersion::try_from_major_minor` and
+  `to_numbers` were removed. Section 3.6.
+- **Sparse structural pages auto-select** in the 2.3 writer (#7756) - see the file-format
+  section above.
+- **Segmented index builds extended to BLOOMFILTER, RTREE, NGRAM, and LABEL_LIST**
+  (#7925, #7932, #7244, #7884), completing the segment lifecycle across the scalar family.
+  `IndexSegment::new` grew from 4 to 6 parameters. One sharp edge: NGRAM segments built before
+  a deferred compaction **must** be merged before commit.
+- **ACORN-1 prefiltered HNSW traversal** (#7927) - opt-in via `approx_mode="fast"` only, with a
+  documented recall regression on uniform-random masks. Section 11.1.
+- **FTS throughput work** - row-id resolution moved after the global top-k merge (26x on a
+  100M-doc benchmark), a new `LANCE_FTS_SEARCH_CHUNK` env var (default 16), an optional
+  `total_tokens` metadata key, and deterministic `_score DESC, _rowid ASC` tie ordering.
+- **Data overlay correctness** - index-served queries now exclude rows whose indexed value a
+  later overlay superseded (#7549, #7926, #7918). Overlay support remains unstable and
+  env-gated.
+- Cross-store `deep_clone` via `CommitBuilder::with_source_store` (#7545); the directory
+  namespace no longer reports storage failures as `TableNotFound` (#7931); `quinn-proto`
+  security bump (#7983). Full delta in `references/lance-reference.md` section 14.
+
 ## What's new in v9
 
-### v9.0 -> v9.1 (the current frontier)
+### v9.0 -> v9.1 (the predecessor dev line)
 
 The 9.1 dev line branched off `main` when `v9.0.0-rc.1` was cut for stabilization - an
 automatic release-train bump, not a breaking change. Structural deltas from beta.18:
@@ -179,14 +256,14 @@ carries forward.
 
 ## Navigating the reference
 
-`references/lance-reference.md` is the full v9 reference, regrounded against the
-`v9.1.0-beta.8` source (127 commits from `v9.0.0-beta.18`, 1 breaking change - delta in its
+`references/lance-reference.md` is the full v10 reference, regrounded against the
+`v10.0.0-beta.7` source (78 commits from `v9.1.0-beta.8`, 4 breaking changes - delta in its
 section 14). Load the section for your task:
 
 1. **What Lance is** - the lakehouse spec stack
 2. **Crate workspace** - all 26 crates, what each does, the public entry point
 3. **File format** - versions, container layout, structural encoding (mini-block / full-zip /
-   constant / blob page types), compression schemes, blob encoding
+   constant / blob page types), compression schemes, blob encoding, `ConcreteFileVersion`
 4. **Data types** - Arrow type coverage, FixedSizeList for vectors, JSON (JSONB), blob, ML
    extension arrays (bfloat16, image types)
 5. **Table format** - dataset directory layout, manifest contents, fragments, deletion
@@ -196,7 +273,8 @@ section 14). Load the section for your task:
 8. **Row IDs** - row address vs stable row ID, lineage, change-data-feed columns
 9. **Transactions and concurrency** - the 16 transaction ops, OCC retry/rebase, commit
    handlers (conditional-put, DynamoDB), conflict resolution matrix
-10. **MemWAL** - shards, MemTable/WAL/flush, the appender/tailer/flusher model, fencing
+10. **MemWAL** - shards, MemTable/WAL/SSTable, compaction, the appender/tailer/flusher model,
+    fencing
 11. **Indexes** - vector (IVF/HNSW/PQ/SQ/RQ, multi-bit RQ), scalar (btree/bitmap/bloom/
     labellist/ngram/zonemap/FM-Index), full-text (BM25, tokenizers), geo/RTree
 12. **Distributed write and indexing** - two-phase commits, segment-based index builds
@@ -219,6 +297,14 @@ optimize by minimizing remote calls** - fewer commits, fewer scans, fewer round 
 
 `references/docs/` mirrors `docs/src` of `lance-format/lance` at the tracked tag, verbatim.
 Every file below is directly readable; pick by topic.
+
+**Not mirrored:** `docs/src/images/` (the PNG/GIF diagram assets). Image links inside the
+mirrored pages therefore do not resolve - the surrounding prose is self-contained, and the four
+index-lifecycle `.drawio.svg` diagrams under `format/index/` *are* mirrored. Also outside the
+mirror by design: the `community/`, `examples/`, and `integrations/{pytorch,tensorflow}` pages,
+and the published-site sections (`format/catalog`, `format/namespace`, and the Spark / Ray /
+Trino / DuckDB / HuggingFace integrations) that are assembled at build time from sibling repos
+with their own version lines.
 
 ### Guides (`references/docs/guide/`)
 
@@ -264,7 +350,7 @@ Every file below is directly readable; pick by topic.
 | `table/versioning.md` | Manifest versioning and feature flags |
 | `table/row_id_lineage.md` | Stable row IDs, lineage, change-data-feed columns |
 | `table/branch_tag.md` | Branch and tag spec |
-| `table/mem_wal.md` | MemWAL / streaming-write spec (experimental) |
+| `table/mem_wal.md` | MemWAL / streaming-write spec (experimental) - SSTables, compaction, shard manifests |
 
 ### Index specs (`references/docs/format/index/`)
 
@@ -293,15 +379,20 @@ Every file below is directly readable; pick by topic.
 ## Maintenance
 
 Citations in `references/lance-reference.md` are `path:line` relative to the `lance-format/lance` repo;
-build a permalink as `https://github.com/lance-format/lance/blob/v9.1.0-beta.8/<path>`.
+build a permalink as `https://github.com/lance-format/lance/blob/v10.0.0-beta.7/<path>`.
 
-To refresh: `git -C ~/pjv/lance-format/lance fetch --tags`, check out the newest `v9*` tag
-(or the v8.0.0 rc/final line for a stable pin), then:
+To refresh: `git -C <your lance-format/lance clone> fetch --tags`, check out the newest tag
+(the major may have jumped again - the release train re-roots on any `breaking-change` label,
+so sort tags by date rather than assuming the current major), then:
 
 1. Re-copy the docs mirror: the `.md` files of `docs/src/{guide,quickstart}`,
    `docs/src/format` (plus the `format/index/*.svg` diagrams), and
    `docs/src/integrations/datafusion.md` into `references/docs/`, preserving the tree.
-   Update this file's file map if docs were added or removed.
+   Update this file's file map if docs were added or removed. Two deviations from upstream
+   bytes are expected and enforced by this repo's pre-commit hooks, not drift: trailing
+   whitespace is stripped from every file, and `end-of-file-fixer` removes the trailing blank
+   line that `format/table/layout.md` and `format/table/row_id_lineage.md` carry upstream.
+   Normalize both before diffing the mirror against a new tag.
 2. Rebuild Part A of `references/performance.md` from the new `guide/performance.md` and
    the other perf sections it cites. Part B (field-verified practices) is
    experience-derived - only edit it with new *measured* results, never speculation.

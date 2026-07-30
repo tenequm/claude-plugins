@@ -7,6 +7,77 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-30
+
+### Changed
+- Re-grounded against upstream `v9.1.0-beta.8` -> `v10.0.0-beta.7` (78 commits, 4 breaking);
+  bumped workspace version pin, permalink base, and citation tag. Retitled "Lance v9" ->
+  "Lance v10". Resynced the 5 changed doc-mirror files.
+- **Release-line correction**: `v9.0.0` FINAL shipped 2026-07-24 and is now the stable pin
+  (supersedes `v8.0.0`). The `9.1.0-beta.*` dev line was mechanically re-rooted as
+  `10.0.0-beta.*` by CI breaking-change detection, so `v9.1.0` was never tagged. `v9.0.0`
+  lives on `release/v9.0` (now `9.0.1-beta.0`) and is not an ancestor of `main`. crates.io
+  publishes finals only - newest is `lance 9.0.0`, so beta pins are git dependencies.
+- **Crate pins**: `lance-arrow-stats` is also pinned `=58.0.0` (the skill previously named only
+  `lance-arrow-scalar`); new workspace dep `blake3 1.8.5`.
+- File format 2.3: sparse structural pages are now **auto-selected** by the 2.3 writer under a
+  rep/def budget heuristic (PR #7756); `structural-encoding` reworded "Select" -> "Force".
+- MemWAL vocabulary overhaul across spec, Rust, Python, Java, and proto (section 10), with a
+  full rename map.
+- `performance.md`: corrected the "`cleanup_older_than` defaults to ~1 hour" claim - Python
+  `cleanup_old_versions` defaults `older_than` to 14 days; the 3600s figure is the docs'
+  `lance.auto_cleanup.older_than` example, not a library default.
+
+### Added
+- Section 14: `v9.1.0-beta.8 -> v10.0.0-beta.7` delta subsection.
+- Section 3.6: `ConcreteFileVersion` exact-identity type, the DataFile encode/decode wire
+  table, and the byte-exact writer fixtures.
+- Section 3.5: `read_blob_ranges` as the fourth blob read path, plus the null-preservation
+  signature table.
+- Section 9.4: cache keys and backend - `CACHE_KEY_FORMAT = "blake3-128-v1"`, removed cache
+  APIs, `QuickCacheBackend`, and the per-shard admission ceiling that silently refuses
+  oversized entries.
+- Section 11.1: ACORN-1 prefiltered HNSW traversal (opt-in, `approx_mode="fast"`) with its
+  documented recall regression; vector append across heterogeneous segment models.
+- Section 11.2/12: segmented index family extended to BLOOMFILTER, RTREE, NGRAM, LABEL_LIST;
+  `IndexSegment::new` signature change; the NGRAM merge-before-commit constraint.
+- Section 11.3: FTS `total_tokens` metadata key, `LANCE_FTS_SEARCH_CHUNK`, top-k row-id
+  resolution, deterministic tie ordering, `bm25_search` removal.
+- Sections 5.5/9.1: data-overlay/index correctness work and the proto-rename impact.
+- Section 13: `memory://` fix, env-var validation, tokio-shutdown fix, and the namespace
+  error-classification change.
+- `performance.md` Part A: a source-derived "Performance changes not in the guide" subsection
+  (cache admission ceiling, FTS chunking, top-k row-id resolution, concurrent segment commit).
+- `performance.md` Part B: `Dataset::versions()` O(history) manifest reads, the 7-day
+  unverified-file floor, transient index-set doubling on `replace=true`, typed commit-conflict
+  errors, `merge_insert` mode switching on source schema shape, bitmap-index prefix-LIKE
+  erroring, blob-column SQL descriptors, and local-FS durability delegation.
+- SKILL.md: an explicit note that `docs/src/images/` is not mirrored.
+
+### Changed (breaking, upstream)
+- **Blob APIs preserve null selections** (#7903, the PR that triggered the v10 bump): Rust
+  `take_blobs*` -> `Vec<Option<BlobFile>>`, `ReadBlob::data` -> `Option<Bytes>`; Python
+  `read_blobs -> List[Tuple[int, Optional[bytes]]]`, `take_blobs -> List[Optional[BlobFile]]`;
+  Java lists may contain null elements.
+- **Cache keys are an opaque 16-byte BLAKE3 digest** (#7878) - all warm/persisted caches
+  cold-miss after upgrade, no legacy fallback; `invalidate_prefix`, `LanceCache::keys`, and
+  `Session::*_cache_keys` removed.
+- **`IndexRemapperOptions::create_remapper` is now async**, returning
+  `Result<Option<Box<dyn IndexRemapper>>>` (#7778).
+- **MemWAL renames** (#7943, #7957): proto `FlushedGeneration` -> `SsTable`,
+  `MergedGeneration` -> `CompactedSsTable`, `flushed_generations` -> `sstables`,
+  `merged_generations` -> `compacted_sstables`. Wire-compatible (field numbers unchanged) but
+  every generated symbol and binding name changes; no deprecation shims.
+- `LanceFileVersion::try_from_major_minor` and `to_numbers` removed (#7879).
+- `InvertedPartition::bm25_search` removed (#7863).
+- Directory namespace no longer collapses storage failures into `TableNotFound` (#7931).
+
+### Security
+- `quinn-proto` 0.11.14 -> 0.11.16 (Dependabot security alert) across the root workspace,
+  `/python`, and `/java/lance-jni` (#7983, #7984, #7982).
+
+Verified against: lance-format/lance@v10.0.0-beta.7
+
 ## [0.11.1] - 2026-07-22
 
 ### Added
