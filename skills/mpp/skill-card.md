@@ -37,9 +37,13 @@ Risk: The skill documents flows that sign and settle real stablecoin, card, and 
 
 Mitigation: Use testnet accounts and throwaway keys during development (the skill's testing flow auto-funds testnet accounts), bound agent spend with Tempo access keys (per-token limits, scopes, expiry), and human-review pricing and recipient addresses before production.
 
-Risk: Session payment channels lock client deposits in escrow; documented failure modes (Store.memory() state loss on redeploy, unfunded recipient fee-token wallets, stalled upstreams) can leave client funds locked.
+Risk: Session payment channels reserve client deposits; documented failure modes (Store.memory() state loss on redeploy, unfunded recipient fee-token wallets, stalled upstreams, and servers that never settle or close channels) can leave client funds reserved indefinitely and server revenue unclaimed.
 
-Mitigation: The skill mandates persistent stores in production, funding the recipient wallet with the stablecoin fee token, upstream AbortSignal timeouts, and channel recovery via channelId - follow its Production Gotchas section.
+Mitigation: The skill mandates persistent stores in production, funding the recipient wallet with the stablecoin fee token, upstream AbortSignal timeouts, channel recovery via bootstrap or channelId, and an explicit settlement policy (settlementSchedule or a tempo.settle sweep paired with a close policy) - follow references/production-gotchas.md.
+
+Risk: Charge payments settle during credential verification, before the route handler runs, so a failed or empty response is still a completed payment.
+
+Mitigation: The skill documents the validateCredential / broadcastCredential split for gating settlement on the work succeeding, and flags the default 5-minute challenge expiry that constrains serve-first designs.
 
 Risk: Rotating MPP_SECRET_KEY carelessly invalidates all in-flight payment challenges, breaking active paid sessions.
 
@@ -48,8 +52,8 @@ Mitigation: Rotate with an overlap window (issue with the new key while verifyin
 ## References
 
 - MPP protocol and docs: https://mpp.dev (spec: https://paymentauth.org; IETF draft-ryan-httpauth-payment)
-- mppx TypeScript SDK: https://github.com/wevm/mppx (tracked: mppx 0.8.1)
-- pympp: https://github.com/tempoxyz/pympp (0.9.0); mpp Rust SDK: https://github.com/tempoxyz/mpp-rs (0.10.4)
+- mppx TypeScript SDK: https://github.com/wevm/mppx (tracked: mppx 0.8.15)
+- pympp: https://github.com/tempoxyz/pympp (0.9.1); mpp Rust SDK: https://github.com/tempoxyz/mpp-rs (0.11.0)
 - Tempo docs: https://docs.tempo.xyz; Stripe MPP docs: https://docs.stripe.com/payments/machine/mpp
 - Source: https://github.com/tenequm/skills/tree/main/skills/mpp
 
@@ -65,7 +69,7 @@ Other properties: Executing the produced code moves real funds on mainnet rails 
 
 ## Skill Version
 
-0.8.3
+0.9.0
 
 ## Ethical Considerations
 

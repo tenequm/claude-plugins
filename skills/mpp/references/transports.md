@@ -321,3 +321,16 @@ const server = McpServer.wrap(baseServer, { methods: [method] })
 // WebSocket transport (sessions only)
 const wsHandler = Ws.serve({ methods: [tempo.session({ ...opts })], secretKey })
 ```
+
+## The `Transport` Namespace
+
+Transports are pluggable objects, exported as `Transport` from both `mppx/client` and `mppx/server`:
+
+| Export | Use when |
+|---|---|
+| `Transport.http()` | HTTP header encoding. Also extracts MCP-over-HTTP `-32042` challenges and retries with the credential in `_meta`, so one payment-aware fetch covers both |
+| `Transport.mcp()` | Handling raw JSON-RPC messages directly |
+| `Transport.mcpSdk()` | Integrating with `@modelcontextprotocol/sdk` |
+| `Transport.from()` | Building a custom transport for another wire format |
+
+A custom payment method can also override encoding for a single method via the `transport` option on `Method.toServer()` - see `references/custom-methods.md`.

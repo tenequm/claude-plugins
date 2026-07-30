@@ -163,6 +163,8 @@ On successful payment verification, the server returns the requested resource al
 | `status`      | Yes      | Always `"success"`                               |
 | `timestamp`   | Yes      | ISO 8601 timestamp of settlement                 |
 
+Payment method specifications MAY define additional receipt fields, and mppx preserves them: `Receipt.from`, `Receipt.deserialize`, and `Receipt.fromResponse` pass unknown fields through rather than stripping anything outside the base set. Session receipts use this to carry `acceptedCumulative`, `spent`, `units`, and `txHash`.
+
 ### Example
 
 ```http
@@ -335,6 +337,23 @@ Clients should verify that the requested payment amount is reasonable before sub
 - Shared caches (CDNs) must not cache `402` responses.
 
 ---
+
+## SDK Helpers for the Primitives
+
+`mppx` exposes the spec objects above as first-class helpers, useful when implementing a transport or handling credentials out of band:
+
+| Helper | Purpose |
+|---|---|
+| `Challenge.from` / `serialize` / `deserialize` | Construct and encode a challenge |
+| `Challenge.fromResponse` / `fromHeaders` / `fromMethod` | Parse a challenge from a 402 response, raw headers, or a method definition |
+| `Challenge.verify` | Recompute and check the HMAC binding |
+| `Challenge.meta` | Extract correlation data (the `opaque` map) from a challenge |
+| `Credential.from` / `serialize` / `deserialize` / `fromRequest` | Build and parse credentials |
+| `Credential.extractPaymentScheme` | Detect whether an `Authorization` header carries the `Payment` scheme |
+| `Receipt.from` / `serialize` / `deserialize` / `fromResponse` | Build and parse receipts |
+| `PaymentRequest.from` / `serialize` / `deserialize` | Handle the base64url `request` parameter |
+| `BodyDigest.compute` / `verify` | RFC 9530 Content-Digest for request body binding |
+| `Expires.minutes` / `hours` | Build `expires` values |
 
 ## Extensibility
 

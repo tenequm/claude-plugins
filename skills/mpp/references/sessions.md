@@ -8,11 +8,12 @@ Key insight: a session amortizes on-chain cost across many interactions. Instead
 
 ## Sessions v2 (default) vs Legacy v1
 
-Since mppx 0.7.0, `tempo.session()` is the **v2** flow built on the TIP-1034 session precompile. The earlier contract-backed escrow implementation (the escrow-contract and channel-recovery mechanics described later in this file) is **Sessions v1**, still shipped as `tempo.sessionLegacy` on both `mppx/server` and `mppx/client`.
+Since mppx 0.7.0, `tempo.session()` is the **v2** flow built on the TIP-1034 session precompile. The earlier contract-backed escrow implementation (the escrow-contract and channel-recovery mechanics described later in this file) is **Sessions v1**, still shipped as `tempo.sessionLegacy` on both `mppx/server` and `mppx/client` - now carrying an explicit `@deprecated` marker pointing at `tempo.session()`.
 
-- **Default:** `tempo.session()` = v2; `tempo.sessionLegacy()` = v1.
+- **Default:** `tempo.session()` = v2; `tempo.sessionLegacy()` = v1, deprecated.
 - **Interop cliff:** a v2-expecting client rejects a v1 session challenge (it lacks `methodDetails.sessionProtocol: "v2"`) and falls back to the charge path. A server still on old mppx serving v1 sessions silently denies newer clients their working path - keep client and server on matching flows, or advertise v2.
 - **Refunds:** v2 reserves funds in the channel without immediately claiming them, so unclaimed reserved funds are refunded by default. v1 refunds by closing the channel (unspent escrow returned to the client).
+- **Where the funds live:** v2 uses a fixed TIP-20 channel precompile (`tip20ChannelEscrow`) at the same address on mainnet (4217) and Moderato testnet (42431). v1 used a deployed `TempoStreamChannel` contract per network.
 
 Two client entry points:
 - `tempo.session({ account, maxDeposit })` - creates the method registered in `Mppx.create()`; the managed `fetch` opens and reuses the channel transparently.
@@ -59,11 +60,59 @@ export async function handler(request: Request) {
 }
 ```
 
-- `mppx.session()` returns a handler that manages the full lifecycle automatically.
-- The account authorized to sign vouchers is configured via `voucherSigner` (renamed from `authorizedSigner` in mppx 0.6.29); the on-chain `channels()` ABI field is still named `authorizedSigner`.
+- `mppx.session()` returns a handler that manages the per-request lifecycle automatically. It does **not** settle on-chain by itself - see Settlement below.
 - `result.status === 402` means the client has not yet opened a channel or the voucher is missing/invalid.
 - `result.challenge` sends the 402 response with payment requirements.
 - `result.withReceipt` attaches the payment receipt header to the response.
+- `voucherSigner` (renamed from `authorizedSigner` in mppx 0.6.29) now exists **only on the legacy v1 path**; v2 derives voucher authority from the session descriptor. The on-chain v1 `channels()` ABI field is still named `authorizedSigner`.
+
+## Settlement
+
+Verifying a voucher is not the same as getting paid. The server stores the highest accepted voucher; converting that into an on-chain transfer is a separate step, and **nothing does it automatically unless you configure it**. A server that never settles accrues signed vouchers it cannot spend, while payer deposits stay reserved in open channels.
+
+### Scheduled settlement (recommended)
+
+`settlementSchedule` is server-owned - clients never see it and cannot influence it. Any of its three triggers can fire:
+
+```typescript
+tempo.session({
+  currency: '<PATHUSD_TESTNET>',
+  recipient: '0x...',
+  store,
+  settlementSchedule: {
+    units: 10_000,      // settle after this many additional paid units
+    amount: '1.00',     // ...or this much additional settled amount
+    intervalMs: 300_000, // ...or this long since the last scheduled settlement
+  },
+})
+```
+
+### Manual settlement
+
+Drive settlement yourself when you want a sweep on your own cadence, or need to drain channels at shutdown:
+
+```typescript
+import { tempo } from 'mppx/server'
+
+// Settle one channel: reads the highest stored voucher and submits it on-chain.
+const txHash = await tempo.settle(store, client, channelId)
+
+// Batch-settle precompile-backed channels.
+await tempo.settleBatch(store, client, channelIds)
+```
+
+Both throw rather than silently no-op: `ChannelNotFoundError` if the channel is unknown, and a verification error if the channel is not precompile-backed or has no voucher to settle.
+
+### Settle vs close
+
+- **Settle** claims what has been consumed so far and leaves the channel open and reusable. This is what you want on a live channel.
+- **Close** performs a final settlement and releases the payer's remaining reservation.
+
+Settling alone is not a complete policy: a client that walks away leaves its channel open indefinitely with funds reserved. Pair a settle cadence with a close policy for channels that have been idle long enough that the session is clearly over.
+
+### Observing settlement
+
+The `onSessionSettlement` server hook fires for both scheduled and explicit settlements, with chain-agnostic context (`trigger`, `txHash`, `channelId`, cumulative amount, incremental delta). Use it to build the ledger that on-chain data alone will not give you, since per-request vouchers never appear as individual transactions.
 
 ## Client Integration
 
@@ -80,7 +129,10 @@ const res = await fetch('http://localhost:3000/api/resource')
 - `maxDeposit`: maximum tokens locked in escrow. At $0.01/unit, 1 pathUSD covers 100 requests.
 - If the server sets `suggestedDeposit`, the client uses `min(suggestedDeposit, maxDeposit)`.
 - Channels remain open for reuse across multiple requests. Close explicitly when done.
-- `channelStore`: pass a store to persist and reuse payer session channels across processes/restarts (mppx 0.8.0). The client-side `authorizedSigner` override was removed in 0.8.0 - voucher authority now derives from the selected account.
+- `channelStore`: pass a store to persist and reuse payer session channels across processes/restarts (mppx 0.8.0). On Node, `mppx/client/node` provides a SQLite store that shares Tempo Wallet's channel database. The client-side `authorizedSigner` override was removed in 0.8.0 - voucher authority now derives from the selected account.
+- `topUpAmount`: preferred top-up size. The default is a bounded server suggestion and then the **exact shortfall**, which means a fine-grained stream can trigger a top-up round-trip per shortfall. Setting a `topUpAmount` batches those into fewer, larger top-ups without changing what the payer ultimately pays, since the server settles actual spend.
+
+Client sessions rehydrate from server snapshots, reconciling the last accepted voucher against on-chain channel state before continuing cumulative payments - so a client that restarts mid-session resumes rather than opening a second channel.
 
 ## SSE Streaming
 
@@ -116,6 +168,8 @@ for await (const word of stream) {
 }
 const receipt = await session.close()
 ```
+
+Since mppx 0.8.12, the polyfilled/standalone client `fetch` also handles payment-aware session SSE responses, so a plain `fetch` against a streaming endpoint renews vouchers mid-stream rather than truncating when the balance runs out. `session.sse()` remains the explicit path when you want direct lifecycle control.
 
 ### Streaming Behavior
 
@@ -169,6 +223,20 @@ const wsHandler = Ws.serve({
 
 ## Channel Recovery After Restarts
 
+### Server bootstrap (preferred)
+
+Set `bootstrap: true` on the session method and the server emits bootstrap hints so a returning client lazily recovers its previous channel from the same protected route before opening a new one:
+
+```typescript
+tempo.session({ currency, recipient, store, bootstrap: true })
+```
+
+Bootstrap snapshots carry the highest signed voucher, so the client reconciles against on-chain state and continues the existing cumulative sequence.
+
+Note what bootstrap can and cannot do. Challenge generation is computed from method defaults and does not query the store, and an unpaid first request carries no payer identity - so the server has nothing to look up for a client it has never seen on that route. Client-side channel persistence (`channelStore`) remains the reliable resumption path across processes; bootstrap covers the same-route case.
+
+### Manual `channelId` (fallback)
+
 Pass `channelId` to `mppx.session()` so returning clients recover existing on-chain channels instead of opening new ones. The `SessionMethodDetails` type has an optional `channelId` field. When included in the 402 challenge, the client SDK's `tryRecoverChannel()` reads on-chain state and resumes the existing channel.
 
 The server doesn't auto-populate this - it's the application's job:
@@ -203,8 +271,13 @@ const result = await mppx.session({
 Session receipts differ from charge receipts:
 
 - `reference` contains `channelId` (a bytes32 hash), not a transaction hash.
-- The on-chain settlement transaction hash is only available after the channel closes.
+- `acceptedCumulative` is the running total the server has accepted, `spent` the amount consumed, and `units` the metered count - a per-request receipt reports cumulative state, not the cost of that one request. Deriving a per-call price by reading the challenge amount at credential time gives blank or wrong values; compute deltas from `acceptedCumulative` instead.
+- `txHash` is only populated once settlement lands on-chain, so it is absent on ordinary voucher receipts.
 - Calling `close()` returns a receipt that includes the `txHash` of the settlement transaction.
+
+## Escrow Contracts (Sessions v1)
+
+Everything from here to the end of the escrow section describes the **v1** contract-backed flow used by `tempo.sessionLegacy`. Sessions v2 replaces it with the TIP-20 channel precompile and does not expose these operations; the payer-initiated recovery path below still matters for channels opened under v1.
 
 ## Store Backends
 
@@ -217,9 +290,9 @@ Sessions require state storage for channel data. Available backends:
 | `Store.upstash()` | Upstash Redis | Serverless Redis |
 | Custom | Implement interface | Requires async `get`, `set`, `delete` methods |
 
-## Escrow Contract
+## Escrow Contract (v1)
 
-The `TempoStreamChannel` on-chain escrow manages deposits, settlements, and refunds.
+The `TempoStreamChannel` on-chain escrow manages deposits, settlements, and refunds for **Sessions v1**.
 
 ### Deployed Addresses
 
@@ -279,6 +352,12 @@ Key details:
 - If the server does nothing, `withdraw()` returns the entire unsettled deposit to the payer.
 - Tempo transactions use the `calls` pattern and `feeToken` for gas payment in USDC. Use `signTransaction(client, ...)` (not `account.signTransaction`) to get Tempo's custom serializer.
 - To find open channels, query `ChannelOpened` events filtered by payer address, then check each channel's state via `channels(channelId)`. Paginate event queries in chunks of 100k blocks (Tempo RPC limit).
+
+## Security
+
+- Voucher replay checks cover settled vouchers and mismatched credential sources (hardened in mppx 0.8.7), so a voucher cannot be re-presented after its cumulative amount has been settled, nor reused from a different declared source.
+- WebSocket close receipts are bound to the signed close amount, spend is committed only when chunks are actually delivered, local `maxDeposit` is enforced on streamed voucher requests, and delivered chunks are tracked for a fallback close on disconnect.
+- `maxDeposit` is the payer's hard ceiling on funds at risk in a channel. Set it deliberately: it bounds the loss if a server never closes.
 
 ## Performance Characteristics
 

@@ -7,6 +7,52 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-30
+
+### Fixed
+
+- Removed three APIs that do not exist in mppx: `mppx.free()` (free proxy routes are the literal value `true`), the `--inspect` CLI flag (use `mppx sign --dry-run`), and `mppx plugins add` (use `mppx skills add` / `mppx mcp add`).
+- Stellar is charge **and** `channel`, not charge-only - the channel intent was never removed; it ships in `@stellar/mpp` with its wire spec still being drafted.
+- `@redotpay/mpp` is published on npm (0.1.2); dropped the "not yet on public npm" caveat.
+- Proof Credentials are in TypeScript, Rust, and Ruby but **not** pympp, whose Tempo method implements only `hash` and `transaction` payload types. Upstream's two capability matrices disagree, so the claim is now sourced from SDK code.
+- Error classes: 14 -> 17. viem peer range `>=2.51.0` -> `>=2.54.0`. Rust feature table gained `sqlite` and the three TLS features.
+- Corrected dead and moved links: `docs.tempo.finance` -> `docs.tempo.xyz`, the Stripe deposit-mode guide, and `/guides/upgrade-x402` -> `/guides/use-mpp-with-x402`. The docs MCP server exposes 8 tools, not 4.
+- Stripe crypto PaymentIntents require API version `2026-03-25.preview` (was `2026-03-04.preview`).
+- Access-key spend limits must be hex-encoded: `numberToHex(parseUnits(...))`, not a raw bigint.
+- Replaced the hand-rolled Privy `toAccount()` + `signSecp256k1` recipe with `createViemAccount` from `@privy-io/node/viem` (requires `@privy-io/node` >= 0.20.0), keeping the manual construction as background.
+
+### Added
+
+- **Session settlement**: `settlementSchedule` (server-owned, triggered by units, amount, or interval), manual `tempo.settle()` / `tempo.settleBatch()`, and the `onSessionSettlement` hook. Without one of these a session server accumulates vouchers it never redeems on-chain, and channels stay open holding payer deposits.
+- Server-side `bootstrap: true` same-route channel recovery; client `topUpAmount` top-up batching; `maxPaymentRetries` (default 3); payment-aware session SSE on client `fetch` responses.
+- New `references/cli.md`: `mppx validate` end-to-end conformance checking, plus `init`, `sign`, `sessions`, `discover`, `services`, `mcp`, `skills`, `-M`, `--format`, and the `MPPX_*` env vars. The `mppx/validation` export runs the same checks programmatically.
+- `validate`/`broadcast` credential lifecycle (`mppx.validateCredential()` vs `mppx.broadcastCredential()`), and the matching `Method.toServer` split.
+- Tempo API relay via `tempo.charge({ relay })` and the two-hook relay contract.
+- NEAR Intents payment method, including its non-trustless settlement disclosure via `methodDetails.settlementBackend`.
+- New subpath exports `mppx/client/node` (SQLite session channel store sharing Tempo Wallet's database) and `mppx/validation`.
+- `Fetch.from/polyfill/restore`, `Mppx.restore`, the `Transport.from/http/mcp/mcpSdk` namespace, `Html.init`, `BodyDigest`, `PaymentRequest`, `Challenge.meta`, and `Credential.extractPaymentScheme`.
+- New `references/discovery-and-proxy.md` (proxy `Service.from`/`custom`, `rewriteRequest`, `docsLlmsUrl`, `{ pay, options }` endpoints, AI-user-agent markdown negotiation, the `discovery()` helper, `x-service-info`) and `references/subscriptions.md` (renewal worker, `409` + `Retry-After: 1` concurrency contract, cancellation vs revocation).
+- New `references/production-gotchas.md` collecting the field-tested failure modes, including payment-timing (charge settles before the handler runs; 5-minute default challenge expiry), realm resolution precedence, settlement obligations, and mppscan attribution behaviour.
+- Celo and Celo Sepolia EVM chains/assets; sponsored-charge budget caps `maxInFlightReservations` / `maxInFlightTotalFee`; extra Zod helpers (`datetimeInput`, `toDate`, `toDatetimeString`, `unwrapOptional`).
+- Rust 0.11.0: TIP-1034 session client primitives, `ChargeMethod::with_validate_sender`, `tempo_simulateV1` sponsored dry-run, `TempoProvider::with_expected_chain_id`.
+
+### Changed
+
+- **Breaking:** `SKILL.md` restructured - Production Gotchas, the CLI, proxy/discovery, and subscriptions moved into `references/` to fit the repo's 500-line cap.
+- `tempo.sessionLegacy` is formally `@deprecated`; `voucherSigner` now exists only on the legacy v1 path; the escrow-contract section is labelled Sessions v1, with v2 on the fixed TIP-20 channel precompile.
+- `Method.toServer({ verify })` and `mppx.verifyCredential()` are deprecated in favour of the split `validate` + `broadcast` pair.
+- Subscription period units: the mppx type is `'dev_second' | 'day' | 'week'` (no `month`) while the published schema says day/week/month - divergence flagged rather than silently picking one.
+- x402 interop is configured on the method as `evm.charge({ x402: { facilitator } })`; client negotiation now prefers Payment-auth challenges over x402.
+- `PaymentError` gained a structured `details` record, the practical way to get diagnostics out of an otherwise opaque 402.
+- Session receipts documented as cumulative (`acceptedCumulative`, `spent`, `units`), so per-call amounts must be derived as deltas.
+
+### Security
+
+- SPT proxy endpoints must derive amount, currency, expiry, and limits server-side; forwarding client-supplied parameters delegates payment authorization to an untrusted client.
+- Sponsorship rejects non-canonical fee-payer calldata and client-supplied access lists; session voucher replay checks hardened for settled vouchers and mismatched credential sources; pympp 0.9.1 rejects ABI calldata with trailing padding; the Rust SDK rejects oversized `WWW-Authenticate` `request` parameters before decoding.
+
+Verified against: mppx@0.8.15, pympp@0.9.1, mpp@0.11.0, @stellar/mpp@0.7.1
+
 ## [0.8.3] - 2026-07-22
 
 ### Added
