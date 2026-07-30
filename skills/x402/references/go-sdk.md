@@ -1,11 +1,17 @@
 # Go SDK Reference
 
-Version: 2.17.0 | Module: `github.com/x402-foundation/x402/go/v2` | Go 1.24+
+Version: 2.20.0 | Module: `github.com/x402-foundation/x402/go/v2` | Go 1.24+
 
 > **Module path:** as of v2.14.0 the module is `github.com/x402-foundation/x402/go/v2`. The old bare `.../x402/go` path no longer resolves tagged releases (it falls back to pseudo-versions). Update all imports to include `/v2`.
 
-## Recent Additions (v2.8-v2.17)
+## Recent Additions (v2.8-v2.20)
 
+- **SVM blockhash hints (v2.20.0)** - `extra.recentBlockhash` / `extra.lastValidBlockHeight` construction hints, matching the TypeScript and Python field names exactly.
+- **Spec-compatible malformed-header errors (v2.20.0)** - a malformed `PAYMENT-SIGNATURE` header now returns `invalid_payload`.
+- **Request body preservation (v2.20.0)** - bodies are no longer lost when a request is retried with payment.
+- **SIWx origin binding (v2.19.0)** - `Origin` is now passed to `CreateResourceServerExtension()`, and `Domain` / `ResourceURI` were **removed** from `DeclareOptions`. Result types became discriminated unions. Solana SIWx rejects small-order Ed25519 public keys (v2.20.0).
+- **Batch-settlement fixes (v2.19.0)** - unauthenticated path traversal and pre-verification channel mutation fixed; `SettleDeposit` no longer double-counts channel balance after a confirmed deposit.
+- **MCP interop (v2.18.0)** - payment matching selects the advertised `accepts` entry matching the payment payload instead of always using the first entry.
 - **Wallet compatibility (v2.17.0)** - payments verify + settle across plain EOAs, ERC-4337 / ERC-7579 smart accounts, counterfactual ERC-6492 wallets, and ERC-7702-delegated EOAs; pre-verification mirrors on-chain signature checking. ERC-6492 gated by `EIP6492AllowedFactories`.
 - **`FacilitatorSupportValidator` hook (v2.17.0)** - resource server fails fast at `Initialize()` when a scheme delegates a capability (e.g. batch-settlement `receiverAuthorizer`) the facilitator does not advertise. Batch-settlement `authorizerSigner` is now optional; missing authorizer signatures error with `ErrAuthorizerNotConfigured` (`invalid_batch_settlement_evm_authorizer_not_configured`).
 - **`sign-in-with-x` (v2.16.0)** - Go gains SIWX server + client (`go/v2/extensions/signinwithx`): SIWX storage, auth hooks, EVM EIP-191 sign/verify, HTTP auth retry; also covers undeployed EIP-6492 and SVM. `dynamicInfoFields` capability added.

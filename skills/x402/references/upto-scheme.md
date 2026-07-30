@@ -1,6 +1,8 @@
 # Upto Scheme Reference
 
 > **Status: Implemented in TypeScript, Go, and Python SDKs.** Full client/server/facilitator implementations are available via `@x402/evm/upto/*` subpaths (TypeScript), `go/mechanisms/evm/upto/*` (Go), and `x402.mechanisms.evm.upto` (Python). The `x402UptoPermit2Proxy` contract is deployed.
+>
+> A **draft** `upto` binding for Solana exists at spec stage (`specs/schemes/upto/scheme_upto_svm.md`), built on the external [Solana payment-channels program](https://github.com/solana-foundation/payment-channels). No SDK implements it yet - the shipping SDKs remain EVM/Permit2 only.
 
 The `upto` scheme enables usage-based payments where the client authorizes a **maximum amount** and the server settles for the **actual amount consumed**. Ideal for LLM token generation, bandwidth metering, time-based API access, and dynamic compute pricing.
 
@@ -73,8 +75,8 @@ Clients must approve the Permit2 contract. Three options:
       "deadline": "1740672154",
       "witness": {
         "to": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-        "validAfter": "1740672089",
-        "extra": {}
+        "facilitator": "<EXAMPLE_FACILITATOR_ADDRESS>",
+        "validAfter": "1740672089"
       }
     }
   }
@@ -83,12 +85,14 @@ Clients must approve the Permit2 contract. Three options:
 
 The `spender` is the `x402UptoPermit2Proxy` contract at `0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002` (same address across all EVM chains via CREATE2).
 
+> **`extra.facilitatorAddress` is required.** The upto client reads `paymentRequirements.extra.facilitatorAddress` and embeds it as `witness.facilitator`. The facilitator supplies it automatically via `getExtra()`, so `<EXAMPLE_FACILITATOR_ADDRESS>` above is whatever your facilitator advertises at `GET /supported` - never a hard-coded constant, and it changes if the operator rotates signers. Without it the client throws `upto scheme requires facilitatorAddress in paymentRequirements.extra`. Only that address can call `settle()` - the contract reverts with `UnauthorizedFacilitator` when `msg.sender != witness.facilitator`.
+
 > The `nonce` field is an opaque 32-byte value (64 hex chars). Examples use `<EXAMPLE_NONCE>` as a placeholder; real implementations generate it randomly per authorization.
 
 ### Verification Steps
 
-1. Verify `payload.signature` is valid and recovers to `permit2Authorization.from` (note: `extra` must be ABI-encoded for verification)
-2. Verify client has enabled Permit2 approval (`ERC20.allowance >= amount`). If insufficient: check for Sponsored ERC20 Approval or EIP-2612 Permit extensions. If neither: return `412 Precondition Failed` (Error: `PERMIT2_ALLOWANCE_REQUIRED`)
+1. Verify `payload.signature` is valid and recovers to `permit2Authorization.from`
+2. Verify client has enabled Permit2 approval (`ERC20.allowance >= amount`). If insufficient: check for Sponsored ERC20 Approval or EIP-2612 Permit extensions. If neither: return `412 Precondition Failed` (Error: `permit2_allowance_required`)
 3. Verify client has sufficient token balance
 4. Verify `permit2Authorization.permitted.amount` equals `amount` from requirements
 5. Verify `deadline` not expired and `witness.validAfter` is active
@@ -122,7 +126,14 @@ Settlement process:
 
 ```solidity
 contract x402UptoPermit2Proxy is x402BasePermit2Proxy {
+    error UnauthorizedFacilitator();
     error AmountExceedsPermitted();
+
+    struct Witness {
+        address to;           // Destination address (immutable once signed)
+        address facilitator;  // Address authorized to settle (must be msg.sender)
+        uint256 validAfter;   // Earliest timestamp when payment can be settled
+    }
 
     function settle(
         ISignatureTransfer.PermitTransferFrom calldata permit,
@@ -132,7 +143,11 @@ contract x402UptoPermit2Proxy is x402BasePermit2Proxy {
         bytes calldata signature
     ) external nonReentrant {
         if (amount > permit.permitted.amount) revert AmountExceedsPermitted();
-        _settle(permit, amount, owner, witness, signature);
+        if (msg.sender != witness.facilitator) revert UnauthorizedFacilitator();
+        bytes32 witnessHash =
+            keccak256(abi.encode(WITNESS_TYPEHASH, witness.to, witness.facilitator, witness.validAfter));
+        _settle(permit, amount, owner, witness.to, witness.validAfter, witnessHash, WITNESS_TYPE_STRING, signature);
+        emit Settled();
     }
 
     function settleWithPermit(
@@ -144,25 +159,20 @@ contract x402UptoPermit2Proxy is x402BasePermit2Proxy {
         bytes calldata signature
     ) external nonReentrant {
         if (amount > permit.permitted.amount) revert AmountExceedsPermitted();
+        if (msg.sender != witness.facilitator) revert UnauthorizedFacilitator();
         _executePermit(permit.permitted.token, owner, permit2612, permit.permitted.amount);
-        _settle(permit, amount, owner, witness, signature);
+        // ... same witnessHash + _settle, emits SettledWithPermit()
     }
 }
 ```
 
-Witness struct (from base contract):
-```solidity
-struct Witness {
-    address to;           // Destination address (immutable once signed)
-    uint256 validAfter;   // Earliest valid timestamp
-    bytes extra;          // ABI-encoded extra data
-}
-```
+> **The upto witness is not the exact witness.** It carries a third field, `facilitator`, which the `exact` witness does not, and it has **no** `extra` field. Signing the wrong struct produces a digest the contract cannot verify, so every payment fails.
 
 ### EIP-712 Types
 
 ```typescript
-const permit2WitnessTypes = {
+// exported as `uptoPermit2WitnessTypes` from @x402/evm
+const uptoPermit2WitnessTypes = {
   PermitWitnessTransferFrom: [
     { name: "permitted", type: "TokenPermissions" },
     { name: "spender", type: "address" },
@@ -176,16 +186,19 @@ const permit2WitnessTypes = {
   ],
   Witness: [
     { name: "to", type: "address" },
+    { name: "facilitator", type: "address" },
     { name: "validAfter", type: "uint256" },
-    { name: "extra", type: "bytes" },
   ],
 };
 ```
 
-Witness type string for the contract:
+Canonical contract constants:
 ```
-"Witness witness)Witness(bytes extra,address to,uint256 validAfter)TokenPermissions(address token,uint256 amount)"
+WITNESS_TYPE_STRING = "Witness witness)TokenPermissions(address token,uint256 amount)Witness(address to,address facilitator,uint256 validAfter)"
+WITNESS_TYPEHASH    = keccak256("Witness(address to,address facilitator,uint256 validAfter)")
 ```
+
+For comparison, the `exact` proxy uses `Witness(address to,uint256 validAfter)`.
 
 ### Error Codes
 
@@ -193,7 +206,8 @@ Witness type string for the contract:
 |------|-------------|
 | `invalid_upto_evm_payload_settlement_exceeds_amount` | Attempted to settle for more than authorized maximum |
 | `AmountExceedsPermitted` | Contract-level revert when `amount > permit.permitted.amount` |
-| `PERMIT2_ALLOWANCE_REQUIRED` | Client has not approved Permit2 contract (412 status) |
+| `UnauthorizedFacilitator` | Contract-level revert when `msg.sender != witness.facilitator` |
+| `permit2_allowance_required` | Client has not approved Permit2 contract (412 status) |
 
 ## Security Considerations
 

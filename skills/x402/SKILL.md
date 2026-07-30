@@ -1,9 +1,9 @@
 ---
 name: x402
-description: "Build internet-native payments with the x402 open protocol - HTTP 402 Payment Required for on-chain micropayments with no accounts or API keys. Use when developing paid APIs, paywalled content, AI agent payment flows, or MCP tools that charge per call. Covers the TypeScript, Python, and Go SDKs across EVM, Solana, Stellar, and Aptos."
+description: "Build internet-native payments with the x402 open protocol - HTTP 402 Payment Required for on-chain micropayments with no accounts or API keys. Use when developing paid APIs, paywalled content, AI agent payment flows, or MCP tools that charge per call. Covers the TypeScript, Python, and Go SDKs across EVM, Solana, Stellar, Aptos, NEAR, and XRPL."
 metadata:
-  version: "0.10.2"
-  upstream: "@x402/core@2.17.0, @x402/evm@2.17.0, x402@2.14.0, github.com/x402-foundation/x402/go/v2@v2.17.0"
+  version: "0.11.0"
+  upstream: "@x402/core@2.20.0, @x402/evm@2.20.0, x402@2.17.0, github.com/x402-foundation/x402/go/v2@v2.20.0"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/x402
     emoji: "💰"
@@ -40,7 +40,7 @@ x402 is an open standard (Apache-2.0) that activates the HTTP `402 Payment Requi
 - Enabling **AI agents** to autonomously pay for resources
 - Integrating **MCP tools** that require payment
 - Building **agent-to-agent** (A2A) payment flows
-- Working with **EVM** (Base, Ethereum, MegaETH, Monad, Polygon, Stable, Arbitrum), **Solana**, **Stellar**, or **Aptos** payment settlement
+- Working with **EVM** (Base, Ethereum, MegaETH, Monad, Polygon, Stable, Arbitrum), **Solana**, **Stellar**, **Aptos**, **NEAR**, or **XRPL** payment settlement
 - Implementing **usage-based billing** with the `upto` scheme (LLM tokens, bandwidth, compute)
 - Running an **in-process facilitator** (self-facilitation) without external facilitator dependency
 
@@ -243,17 +243,28 @@ registerExactSvmScheme(client, { signer: svmSigner });
 | TON Testnet | `tvm:-3` | Testnet |
 | Hedera Mainnet | `hedera:mainnet` | Mainnet (HBAR + HTS tokens) |
 | Hedera Testnet | `hedera:testnet` | Testnet |
-| Algorand Mainnet | `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=` | Mainnet (USDC ASA) |
+| Algorand Mainnet | `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k` | Mainnet (USDC ASA) |
+| Algorand Testnet | `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe` | Testnet (USDC ASA) |
 | Keeta Mainnet | `keeta:21378` | Mainnet (TypeScript SDK) |
 | Keeta Testnet | `keeta:1413829460` | Testnet (TypeScript SDK) |
 | Concordium Mainnet | `ccd:9dd9ca4d19e9393877d2c44b70f89acb` | Mainnet (native CCD, 6 decimals; TypeScript SDK) |
 | Concordium Testnet | `ccd:4221332d34e1694168c2a0c0b3fd0f27` | Testnet (native CCD; TypeScript SDK) |
+| Igra Mainnet | `eip155:38833` | Mainnet (USDC, Permit2 only - no EIP-3009, no EIP-2612) |
+| NEAR Mainnet | `near:mainnet` | Mainnet (NEP-141 USDC, relayer-sponsored; TypeScript SDK) |
+| NEAR Testnet | `near:testnet` | Testnet (TypeScript SDK) |
+| XRPL Mainnet | `xrpl:0` | Mainnet (XRP + IOUs, no fee sponsorship; TypeScript SDK) |
+| XRPL Testnet | `xrpl:1` | Testnet |
+| XRPL Devnet | `xrpl:2` | Devnet |
 
-Default facilitator (`https://x402.org/facilitator`) supports Base Sepolia, Solana Devnet, Stellar Testnet, Aptos Testnet, and Hedera Testnet.
+> **Algorand CAIP-2 ids changed.** The reference is the URL-safe base64 genesis hash **truncated to the first 32 characters**. The older padded full-hash form (`algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=`) no longer matches; SDKs normalize legacy ids on input, but emit the truncated form.
+
+Default facilitator (`https://x402.org/facilitator`) supports Base Sepolia, Solana Devnet, Algorand Testnet, Stellar Testnet, Aptos Testnet, Hedera Testnet, and XRPL Testnet. On Base Sepolia it advertises `exact`, `upto`, **and** `batch-settlement`, plus the `builder-code`, `eip2612GasSponsoring`, and `erc20ApprovalGasSponsoring` extensions.
+
+> **Not a production default.** Upstream now states explicitly that the public `x402.org` facilitator is intended for development and testnet workflows - do not assume it is the default path for production mainnet routes. See the [facilitator directory](https://docs.x402.org/dev-tools/facilitators) for production options.
 
 ## SDK Packages
 
-### TypeScript v2.17.0 ([npm](https://www.npmjs.com/org/x402), [GitHub](https://github.com/x402-foundation/x402/tree/main/typescript))
+### TypeScript v2.20.0 ([npm](https://www.npmjs.com/org/x402), [GitHub](https://github.com/x402-foundation/x402/tree/main/typescript))
 | Package | Purpose |
 |---------|---------|
 | `@x402/core` | Core types, client, server, facilitator |
@@ -266,6 +277,8 @@ Default facilitator (`https://x402.org/facilitator`) supports Base Sepolia, Sola
 | `@x402/tvm` | TON scheme (jetton transfers) |
 | `@x402/keeta` | Keeta scheme (exact) |
 | `@x402/concordium` | Concordium scheme (native CCD, exact) |
+| `@x402/near` | NEAR scheme (NEP-366 SignedDelegate + NEP-141 `ft_transfer`, relayer-sponsored) |
+| `@x402/xrpl` | XRPL scheme (payer-signed `Payment`, no fee sponsorship). Tagged 2.20.0 but **not yet on npm** - build from source |
 | `@x402/express` | Express middleware |
 | `@x402/fastify` | Fastify middleware |
 | `@x402/hono` | Hono edge middleware |
@@ -276,19 +289,23 @@ Default facilitator (`https://x402.org/facilitator`) supports Base Sepolia, Sola
 | `@x402/mcp` | MCP client + server |
 | `@x402/extensions` | Bazaar, offer-receipt, payment-identifier, sign-in-with-x, gas sponsoring |
 
-### Python v2.14.0 ([PyPI](https://pypi.org/project/x402/), [GitHub](https://github.com/x402-foundation/x402/tree/main/python))
+### Python v2.17.0 ([PyPI](https://pypi.org/project/x402/), [GitHub](https://github.com/x402-foundation/x402/tree/main/python))
 ```bash
 pip install "x402[httpx]"      # Async HTTP client
 pip install "x402[requests]"   # Sync HTTP client
 pip install "x402[fastapi]"    # FastAPI server
 pip install "x402[flask]"      # Flask server
+pip install "x402[evm]"        # EVM support
 pip install "x402[svm]"        # Solana support
+pip install "x402[tvm]"        # TON support
 pip install "x402[mcp]"        # MCP integration
 pip install "x402[extensions]" # Extensions (bazaar, gas sponsoring, etc.)
 pip install "x402[all]"        # Everything
 ```
 
-### Go v2.17.0 ([GitHub](https://github.com/x402-foundation/x402/tree/main/go))
+Convenience bundles: `clients` (httpx + requests), `servers` (flask + fastapi), `mechanisms` (evm + svm + tvm).
+
+### Go v2.20.0 ([GitHub](https://github.com/x402-foundation/x402/tree/main/go))
 
 The Go module path carries a `/v2` suffix - the bare `.../x402/go` path no longer resolves tagged releases.
 
@@ -305,7 +322,7 @@ A fourth official binding is in the repo (`PaymentFilter`, `FacilitatorClient`, 
 - **Client/Server/Facilitator**: The three roles in every payment. Client signs, server enforces, facilitator settles on-chain. See `references/core-concepts.md`
 - **Wallet**: Both payment mechanism and identity for buyers/sellers. See `references/core-concepts.md`
 - **Networks & Tokens**: CAIP-2 identifiers, EIP-3009 tokens on EVM, SPL on Solana, custom token config. See `references/core-concepts.md`
-- **Scheme**: Payment method. `exact` = transfer exact amount; `upto` = authorize max, settle actual usage (EVM Permit2 only); `batch-settlement` = commit at request time, settle asynchronously; `auth-capture` = escrow / authorize-then-capture with void, refund, reclaim. See `references/evm-scheme.md`, `references/svm-scheme.md`, `references/stellar-scheme.md`, `references/upto-scheme.md`, `references/aptos-scheme.md`, `references/protocol-spec.md`
+- **Scheme**: Payment method. `exact` = transfer exact amount; `upto` = authorize max, settle actual usage (shipping SDKs are EVM Permit2 only; a draft SVM binding via Solana payment channels is spec-stage); `batch-settlement` = commit at request time, settle asynchronously; `auth-capture` = escrow / authorize-then-capture with void, refund, reclaim. See `references/evm-scheme.md`, `references/svm-scheme.md`, `references/stellar-scheme.md`, `references/upto-scheme.md`, `references/aptos-scheme.md`, `references/near-scheme.md`, `references/xrpl-scheme.md`, `references/protocol-spec.md`
 - **Self-facilitation**: Run an in-process facilitator instead of calling an external URL. See `references/typescript-sdk.md`, `references/go-sdk.md`
 - **Transport**: How payment data is transmitted (HTTP headers, MCP `_meta`, A2A metadata). See `references/transports.md`
 - **Extensions**: Optional features (bazaar discovery, offer-receipt attestations, payment-identifier idempotency, sign-in-with-x auth, gas sponsoring, builder-code attribution, http-message-signatures, auth-hints). See `references/extensions.md`
@@ -328,6 +345,8 @@ A fourth official binding is in the repo (`PaymentFilter`, `FacilitatorClient`, 
 | `references/stellar-scheme.md` | Stellar exact scheme: SEP-41 Soroban token transfers, ledger-based expiration, fee sponsorship, TypeScript SDK only |
 | `references/upto-scheme.md` | Upto (usage-based) scheme: authorize max amount, settle actual usage. EVM via Permit2 only |
 | `references/aptos-scheme.md` | Aptos exact scheme: fungible asset transfers, fee payer sponsorship, TypeScript SDK only |
+| `references/near-scheme.md` | NEAR exact scheme: NEP-366 SignedDelegate, NEP-141 `ft_transfer`, relayer gas sponsorship, full-access-key requirement, NEP-145 storage registration |
+| `references/xrpl-scheme.md` | XRPL exact scheme: payer-signed `Payment`, no fee sponsorship, explicit `AssetAmount` pricing, sequence vs ticketSequence |
 | `references/transports.md` | HTTP, MCP, A2A transport implementations |
 | `references/extensions.md` | Bazaar, payment-identifier, sign-in-with-x, gas sponsoring (eip2612 + erc20) extensions |
 | `references/lifecycle-hooks.md` | Client/server/facilitator hooks (TypeScript, Python, Go), hook chaining, MCP hooks |
@@ -338,5 +357,8 @@ A fourth official binding is in the repo (`PaymentFilter`, `FacilitatorClient`, 
 - Spec: https://github.com/x402-foundation/x402/tree/main/specs
 - Docs: https://docs.x402.org
 - Website: https://x402.org
-- Ecosystem: https://x402.org/ecosystem
+- [Facilitator directory](https://docs.x402.org/dev-tools/facilitators) - named production and community facilitators
+- [Third-party SDKs](https://docs.x402.org/dev-tools/third-party-sdks) - Rust (`x402-rs`), Java (Mogami), Ruby (x402-rails), and others beyond the three official bindings
+- [Third-party extensions](https://docs.x402.org/dev-tools/third-party-extensions) - ecosystem extension packages
+- Community: Slack at http://slack.x402.org/ (the project moved off Discord)
 - Foundation Charter: https://github.com/x402-foundation/x402/tree/main/foundation

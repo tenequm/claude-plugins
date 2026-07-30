@@ -358,7 +358,12 @@ The **captureAuthorizer** is the entity allowed to authorize, capture, void, ref
 
 ## Spec-Stage Chains (No SDK Yet)
 
-Beyond the SDK-supported networks, the spec defines `exact` schemes for additional chains that have no SDK implementation yet (spec only). As of this writing: Cardano, NEAR, and Sui. (Concordium and Keeta graduated to TypeScript SDKs - `@x402/concordium`, `@x402/keeta`.) See `specs/schemes/exact/scheme_exact_<chain>.md`. A Cloudflare variant of `batch-settlement` is also spec-defined (`specs/schemes/batch-settlement/scheme_batch_settlement_cloudflare.md`).
+Beyond the SDK-supported networks, the spec defines `exact` schemes for additional chains with no SDK implementation (spec only): **Cardano, Sui, Starknet, and Casper**. (NEAR graduated to `@x402/near`, joining earlier graduates `@x402/concordium` and `@x402/keeta`; XRPL arrived with both spec and SDK.) See `specs/schemes/exact/scheme_exact_<chain>.md`.
+
+- **Starknet** (`starknet:SN_MAIN` / `starknet:SN_SEPOLIA`) - the client signs a SNIP-12 typed-data message authorizing exactly one `transfer` from its account contract; the facilitator executes it via `execute_from_outside_v2`. Defines 12 `invalid_exact_starknet_*` codes plus `settlement_pending`.
+- **Casper** (`casper:casper` / `casper:casper-test`) - uses the `transfer_with_authorization` entry point from CEP-3009, Casper's adaptation of EIP-3009 for CEP-18 tokens.
+
+Other spec-only bindings: a Cloudflare variant of `batch-settlement` (`specs/schemes/batch-settlement/scheme_batch_settlement_cloudflare.md`), and a **draft** SVM binding for `upto` built on the Solana payment-channels program (`specs/schemes/upto/scheme_upto_svm.md`).
 
 ## Network Identifiers (CAIP-2)
 
@@ -391,7 +396,14 @@ Format: `{namespace}:{reference}`
 | TON Testnet | `tvm:-3` |
 | Hedera Mainnet | `hedera:mainnet` |
 | Hedera Testnet | `hedera:testnet` |
-| Algorand Mainnet | `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=` |
+| Algorand Mainnet | `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k` |
+| Algorand Testnet | `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe` |
+| Igra Mainnet | `eip155:38833` |
+| NEAR Mainnet | `near:mainnet` |
+| NEAR Testnet | `near:testnet` |
+| XRPL Mainnet | `xrpl:0` |
+| XRPL Testnet | `xrpl:1` |
+| XRPL Devnet | `xrpl:2` |
 | Mezo Mainnet | `eip155:31612` |
 | Mezo Testnet | `eip155:31611` |
 | XDC Network Mainnet | `eip155:50` |
@@ -432,7 +444,7 @@ Semantic search over discoverable resources, with cursor-based pagination (`quer
 | `invalid_exact_evm_payload_authorization_value_mismatch` | Amount does not exactly match required |
 | `invalid_exact_svm_payload_amount_mismatch` | Solana amount does not exactly match required |
 | `permit2_amount_mismatch` | Permit2 amount does not exactly match required |
-| `PERMIT2_ALLOWANCE_REQUIRED` | Client has not approved the Permit2 contract (HTTP 412 Precondition Failed) |
+| `permit2_allowance_required` | Client has not approved the Permit2 contract (HTTP 412 Precondition Failed). Prose in the EVM spec spells it uppercase, but all three SDKs emit lowercase on the wire |
 | `invalid_exact_evm_payload_recipient_mismatch` | Recipient mismatch |
 | `invalid_network` | Network not supported |
 | `invalid_payload` | Malformed payload |
@@ -446,6 +458,12 @@ Semantic search over discoverable resources, with cursor-based pagination (`quer
 | `invalid_transaction_state` | Blockchain transaction failed or rejected |
 | `duplicate_settlement` | Same SVM transaction submitted to /settle multiple times |
 | `invalid_upto_evm_payload_settlement_exceeds_amount` | Upto: settled more than authorized |
+| `invalid_batch_settlement_evm_channel_id_invalid` | Batch-settlement channel id failed validation |
+| `invalid_batch_settlement_evm_verification_state_unavailable` | Batch-settlement verification state could not be read |
+| `invalid_batch_settlement_evm_permit2_allowance_required` | Batch-settlement deposit needs a Permit2 allowance |
+| `invalid_exact_stellar_payload_fee_exceeds_maximum` | Stellar client fee bid exceeds `maxTransactionFeeStroops` |
+| `invalid_exact_hedera_payload_signature_invalid` | Hedera payer did not sign the frozen transaction body |
+| `invalid_siwx_*` | 15 sign-in-with-x codes; see `references/extensions.md` |
 | `unexpected_verify_error` | Unexpected verify error |
 | `unexpected_settle_error` | Unexpected settle error |
 
@@ -487,3 +505,6 @@ Clients must echo the extension from `PaymentRequired` into their `PaymentPayloa
 - **Signature verification**: All authorizations cryptographically signed by payer
 - **Time constraints**: `validAfter`/`validBefore` (EIP-3009) or `validAfter`/`deadline` (Permit2) bound authorization lifetime
 - **ERC-7710 race condition**: Mitigated via private mempool submission and reputation signals
+- **Batch-settlement channel storage**: an untrusted `channelId` from an incoming payload previously reached the file-storage path builder (only lowercased) and reserved or wrote channel state *before* the voucher signature was verified, so a crafted `channelId` could escape the storage root and mutate arbitrary channel files. Fixed in all three SDKs by validating the id (`invalid_batch_settlement_evm_channel_id_invalid`) and splitting verification into a read-only before-verify and an atomic after-verify
+- **Signature verification must be cryptographic, not simulated**: Aptos verification MUST NOT rely on transaction simulation, which substitutes a dummy signature and never checks the submitted one. Hedera facilitators MUST verify the inferred payer actually signed the frozen transaction body before sponsoring it
+- **Facilitators must not trust client-supplied fees**: Stellar facilitators MUST derive the settlement fee from a fresh simulation at settle time and MUST NOT use the client's fee bid

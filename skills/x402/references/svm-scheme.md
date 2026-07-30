@@ -43,6 +43,10 @@ Well-known Solana base58 mint and program addresses referenced by placeholder el
 
 - `asset`: Public key of the token mint (e.g., USDC mint)
 - `extra.feePayer`: Facilitator's public key that pays transaction fees
+- `extra.recentBlockhash` (optional): a recent blockhash supplied by the **resource server** for the client to use as the transaction lifetime, saving a `getLatestBlockhash` round-trip and pinning the transaction to a blockhash the settling RPC has observed. When absent or malformed the client MUST fetch its own. Only set this when your RPC's view of recent blockhashes matches the settling sponsor's - a stale or fork-divergent blockhash makes the transaction expire or fail to land
+- `extra.lastValidBlockHeight` (optional): decimal string marking the last block height at which `recentBlockhash` is valid. Informational only; ignored when `recentBlockhash` is absent
+
+Both are **construction hints, not bindings**. They do not bind the submitted transaction to the hinted blockhash, and facilitator verification does not compare the transaction's blockhash against `extra.recentBlockhash`.
 
 ## PaymentPayload
 
@@ -101,9 +105,19 @@ When `enableSmartWalletVerification` is set, transactions the static positional 
 
 - Facilitator signs the transaction with the fee payer's signer, then simulates to verify it would succeed
 
-## Footgun: Destination ATA Must Exist On-Chain
+## Footgun: Token Accounts Must Exist On-Chain
 
-x402 Solana transactions contain only `[ComputeBudget x2, TransferChecked, optional Lighthouse/Memo]` - there is no `createAssociatedTokenAccount` instruction. If the recipient's Associated Token Account for the payment mint does not already exist on-chain, `TransferChecked` fails simulation with `InvalidAccountData`, the facilitator rejects the payment, and the buyer's wallet never prompts. Before going live, create the destination token account (the ATA for `(owner=payTo, mint=asset)`) on the target network. `payTo` is the wallet **owner** address - the facilitator derives the ATA from it.
+x402 Solana transactions contain only `[ComputeBudget x2, TransferChecked, optional Lighthouse/Memo]` - there is no `createAssociatedTokenAccount` instruction. If the Associated Token Account for the payment mint does not already exist on-chain, `TransferChecked` fails simulation with `InvalidAccountData`, the facilitator rejects the payment, and the buyer's wallet never prompts - the user sees only a bare 402 with no signing prompt.
+
+This applies to **both sides**: check the payer's ATA and the `payTo` ATA before debugging anything else on SVM. `payTo` is the wallet **owner** address; the facilitator derives the ATA from it. A related symptom: balance readers show no data for a fresh address because `getTokenAccountBalance` returns nothing when the account does not exist.
+
+## Footgun: `maxTimeoutSeconds` Is Capped by Blockhash Lifetime
+
+Setting `maxTimeoutSeconds` above roughly 90 seconds does nothing on Solana. The transaction's lifetime is bounded by its blockhash, which expires in ~60-90 seconds regardless of the declared timeout - the spec's own settlement-cache reasoning notes that after that window "the transaction's blockhash will have expired and it cannot land on-chain regardless." Treat values above ~90s as unenforceable unless durable nonces or an on-chain deadline check are in play.
+
+## Footgun: Wallet-Injected Instructions
+
+The static verification path validates exact instruction structure, so wallets that inject their own guard instructions can push a transaction outside the allowed layout - rejected with `invalid_exact_svm_payload_transaction_instructions_length` or a simulation/signature failure. Phantom injects 1 Lighthouse instruction and Solflare 2 (which is why the ceiling is 7), but smart-wallet CPI wrapping is a broader incompatibility class; use `enableSmartWalletVerification` for those. Dropping the explicit compute-unit-limit instruction is also rejected (`invalid_compute_limit_instruction`) - the compute budget instructions are required structure, not optional optimization.
 
 ## Duplicate Settlement Mitigation (RECOMMENDED)
 
@@ -142,6 +156,15 @@ cache := svm.NewSettlementCache()
 from x402.mechanisms.svm.settlement_cache import SettlementCache
 cache = SettlementCache()
 ```
+
+### Operational Cautions
+
+Duplicate rejection is a **client-visible behavior change**, not a free correctness win. Two things to weigh before enabling it on a live endpoint:
+
+- **Honest retries get rejected too.** A client that loses the response and retries the same signed payment inside the TTL receives `duplicate_settlement`, not the resource. Clients that deliberately fire parallel requests reusing one signed payment - and expect all of them served - break outright. The alternative is **idempotent replay**: serve the cached response for a repeated payment header and coalesce in-flight duplicates, rather than rejecting.
+- **Cache only successful settlements.** Caching failures makes them authoritative: a first settle that fails on-chain, cached, then replayed to every retry, can never succeed. A failed settle must stay retryable.
+
+More broadly, an on-chain settlement is only settled once the transaction status confirms it. Submitting with `skipPreflight` and treating RPC acceptance as success will report `success: true` for a transaction that landed in a block with `meta.err` set - fetch the status and require `meta.err === null` before returning success.
 
 ## Multi-Signer Load Balancing
 

@@ -1,9 +1,15 @@
 # Python SDK Reference
 
-Version: 2.14.0
+Version: 2.17.0
 
-## Recent Additions (v2.7-v2.14)
+## Recent Additions (v2.7-v2.17)
 
+- **SVM blockhash hints (v2.17.0)** - `extra.recentBlockhash` / `extra.lastValidBlockHeight` construction hints, matching TypeScript and Go field names exactly.
+- **httpx streaming retry fix (v2.17.0)** - request bodies are no longer lost when a request is retried with payment.
+- **`builder-code` (v2.17.0)** - full Python support via `x402.extensions.builder_code` (client/server/facilitator + CBOR) plus `x402.mechanisms.evm.data_suffix`. Python now covers every extension that TypeScript and Go do except `offer-receipt`.
+- **SIWx breaking changes (v2.16.0)** - results use `is_valid`, `invalid_reason`, `invalid_message`, and `payer` instead of `valid`, `error`, and `address` (filed upstream under a literal "Removals" heading). Origin binding is now required; see `references/extensions.md`.
+- **Paywall-bypass fix (v2.15.0)** - Flask middleware no longer skips settlement on 3xx responses, which allowed paid content behind a redirect to be delivered without on-chain payment. Flask and FastAPI now return 500 rather than a silent empty 402 on unexpected settlement errors.
+- **Signer flexibility (v2.15.0)** - the EVM signer auto-wraps any `eth_account` `BaseAccount`, not only `LocalAccount`.
 - **Wallet compatibility (v2.14.0)** - payments verify + settle across plain EOAs, ERC-4337 / ERC-7579 smart accounts, counterfactual ERC-6492 wallets, and ERC-7702-delegated EOAs; ERC-6492 support in `exact` + `batch-settlement`, gated by `eip6492_allowed_factories`. Batch-settlement `receiver_authorizer_signer` is now optional, with a fail-fast `initialize()` check when the facilitator advertises no usable `receiverAuthorizer`.
 - **Networks (v2.13.0)** - Mezo mainnet (`eip155:31612`, mUSD 18 decimals), XDC Network (`eip155:50`) and XDC Apothem (`eip155:51`) in EVM default-asset resolution.
 - **Verify guard (v2.13.0)** - EVM verify rejects EOA asset addresses (no bytecode) across EIP-3009 / Permit2 exact / Permit2 upto with `asset_not_deployed_contract`; authorization `validAfter` set to 0; payment-creation failure hooks now run when after-payment hooks raise.
@@ -25,11 +31,15 @@ pip install "x402[httpx]"      # Async HTTP client
 pip install "x402[requests]"   # Sync HTTP client
 pip install "x402[fastapi]"    # FastAPI server
 pip install "x402[flask]"      # Flask server
-pip install "x402[svm]"        # Solana support
+pip install "x402[evm]"        # EVM support (eth-account, web3, eth-abi)
+pip install "x402[svm]"        # Solana support (solders, solana)
+pip install "x402[tvm]"        # TON support (pytoniq)
 pip install "x402[mcp]"        # MCP integration
 pip install "x402[extensions]" # Extensions (bazaar, gas sponsoring, payment-identifier, etc.)
 pip install "x402[all]"        # Everything
 ```
+
+Convenience bundles: `clients` (httpx + requests), `servers` (flask + fastapi), `mechanisms` (evm + svm + tvm).
 
 ## Server: FastAPI
 
@@ -360,7 +370,7 @@ FastAPI middleware uses async variants. Flask middleware uses sync variants.
 | Flask middleware | `from x402.http.middleware.flask import PaymentMiddleware` |
 | Route config | `from x402.http.types import RouteConfig` |
 | Payment option | `from x402.http import PaymentOption` |
-| EVM server scheme | `from x402.mechanisms.evm.exact import ExactEvmServerScheme` |
+| EVM server scheme | `from x402.mechanisms.evm.exact import ExactEvmServerScheme` (an alias for `ExactEvmScheme`) |
 | EVM client register | `from x402.mechanisms.evm.exact.register import register_exact_evm_client` |
 | EVM signer | `from x402.mechanisms.evm import EthAccountSigner` |
 | SVM server scheme | `from x402.mechanisms.svm.exact import ExactSvmServerScheme` |

@@ -63,7 +63,7 @@ Facilitator verification:
 2. Verify scheme is "exact"
 3. Verify network matches (CAIP-2)
 4. For sponsored tx: verify fee payer is managed by facilitator
-5. Deserialize BCS-encoded transaction and verify signature
+5. Deserialize BCS-encoded transaction and verify the signature **cryptographically**. This MUST NOT rely on transaction simulation, which substitutes an invalid dummy signature and never checks the submitted one
 6. Verify chain ID matches expected network
 7. Verify sender's public key matches derived address
 8. For sponsored tx: verify max gas <= 500,000 units (prevent gas drain)

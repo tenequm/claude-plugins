@@ -91,7 +91,17 @@ An optional but recommended service that simplifies payment verification and set
 - **Reduced complexity**: Servers don't need direct blockchain connectivity
 - **Protocol consistency**: Standardized verification/settlement flows
 - **Faster integration**: Start accepting payments with minimal blockchain development
-- **Gas abstraction**: Facilitator sponsors gas fees, buyers don't need native tokens
+- **Gas abstraction**: Facilitator sponsors gas fees, buyers don't need native tokens (XRPL is the exception - it cannot sponsor fees)
+
+### What Is Local and What Is a Network Call
+
+Registering a scheme on the resource server does **not** create a local verification path. `server.register(network, scheme)` supplies the logic for *building* payment requirements - price parsing, default-asset resolution, constructing the 402. Both `verifyPayment()` and `settlePayment()` always round-trip to a `FacilitatorClient`, even when a scheme is registered for that network. Budget for that latency and for the facilitator being a hard dependency on the request path.
+
+### Running Your Own Facilitator: Serialize Your Settles
+
+A facilitator settling EVM payments from a single signer EOA must manage its own transaction ordering. Concurrent `/settle` calls race on the **Ethereum account nonce** of the facilitator's own EOA - not on the EIP-3009 authorization nonce - and the SDKs ship no queue, mutex, or nonce coordination in the settle path. Settle-time simulation does not protect against this: simulation is a read-only call, so every concurrent simulation passes while only the first writer's transaction lands.
+
+Serialize settles per signer, or run multiple signer addresses (the EVM facilitator signer supports multiple addresses for load balancing and key rotation).
 
 ### Live Facilitators
 
@@ -99,9 +109,13 @@ Multiple production facilitators are available. The ecosystem is permissionless 
 
 | Facilitator | Networks | Use Case |
 |-------------|----------|----------|
-| x402.org (default) | Base Sepolia, Solana Devnet, Stellar Testnet, Aptos Testnet, Hedera Testnet | Testing/development, no setup needed |
-| [Production facilitators](https://www.x402.org/ecosystem?filter=facilitators) | Base, Solana, Polygon, Avalanche, etc. | Production use |
+| x402.org (default) | Base Sepolia, Solana Devnet, Algorand Testnet, Stellar Testnet, Aptos Testnet, Hedera Testnet, XRPL Testnet | Testing/development, no setup needed |
+| [Facilitator directory](https://docs.x402.org/dev-tools/facilitators) | Base, Solana, Polygon, NEAR, XRPL, etc. | Production use |
 | Self-hosted | Any EVM chain | Full control |
+
+On Base Sepolia the default facilitator advertises `exact`, `upto`, **and** `batch-settlement`, plus the `builder-code`, `eip2612GasSponsoring`, and `erc20ApprovalGasSponsoring` extensions. Query `GET https://x402.org/facilitator/supported` for the live list rather than assuming.
+
+> **The default facilitator is not a production default.** Upstream states explicitly that the public `x402.org` facilitator is intended for development and testnet workflows - do not assume it is the path for production mainnet routes.
 
 **Key insight**: Facilitators support NETWORKS, not specific tokens. Any EIP-3009 token works on EVM networks, any SPL/Token-2022 token works on Solana, any SEP-41 token works on Stellar, and any fungible asset works on Aptos, as long as the facilitator supports that network.
 
@@ -139,7 +153,9 @@ Format: `{namespace}:{reference}`
 - **Stellar**: `stellar:<network>` (e.g., `stellar:pubnet` for mainnet)
 - **TON**: `tvm:<workchain>` (e.g., `tvm:-239` for mainnet)
 - **Hedera**: `hedera:<network>` (e.g., `hedera:mainnet`)
-- **Algorand**: `algorand:<genesisHash>` (e.g., `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=` for mainnet)
+- **Algorand**: `algorand:<truncatedGenesisHash>` (e.g., `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k` for mainnet). The reference is the URL-safe base64 genesis hash **truncated to the first 32 characters** - full genesis hashes appear only in on-chain transaction `gh` fields, never in CAIP-2 `network` values. SDKs normalize legacy full-hash ids on input but emit the truncated form (`normalizeAlgorandNetwork`).
+- **NEAR**: `near:<network>` (e.g., `near:mainnet`, `near:testnet`)
+- **XRPL**: `xrpl:<networkId>` (e.g., `xrpl:0` mainnet, `xrpl:1` testnet, `xrpl:2` devnet)
 - **Keeta**: `keeta:<chainId>` (e.g., `keeta:21378` for mainnet, `keeta:1413829460` for testnet)
 - **Concordium**: `ccd:<genesisHash>` (e.g., `ccd:9dd9ca4d19e9393877d2c44b70f89acb` for mainnet)
 
@@ -283,7 +299,13 @@ facilitator.register("eip155:43114", new ExactEvmScheme({
 | HPP Sepolia | `eip155:181228` | Bridged USDC | Community |
 | TON Mainnet | `tvm:-239` | Jettons (USDT default) | Community |
 | Hedera Mainnet | `hedera:mainnet` | HBAR + HTS tokens | Community |
-| Algorand Mainnet | `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=` | USDC ASA | Community |
+| Algorand Mainnet | `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k` | USDC ASA | Community |
+| Algorand Testnet | `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe` | USDC ASA | x402.org (testnet) |
+| Igra Mainnet | `eip155:38833` | USDC (Permit2 only) | Community |
+| NEAR Mainnet | `near:mainnet` | NEP-141 USDC | Community |
+| NEAR Testnet | `near:testnet` | NEP-141 USDC | Community |
+| XRPL Mainnet | `xrpl:0` | XRP + issued currencies | Community |
+| XRPL Testnet | `xrpl:1` | XRP + issued currencies | x402.org (testnet) |
 | Keeta Mainnet | `keeta:21378` | TypeScript SDK | Community |
 | Keeta Testnet | `keeta:1413829460` | TypeScript SDK | Community |
 | Concordium Mainnet | `ccd:9dd9ca4d19e9393877d2c44b70f89acb` | Native CCD (6 decimals) | Community |
@@ -309,6 +331,8 @@ facilitator.register("eip155:43114", new ExactEvmScheme({
 | TON/TVM (exact/jetton) | Yes | No | Yes |
 | Keeta (exact) | Yes | No | No |
 | Concordium (exact) | Yes | No | No |
+| NEAR (exact/NEP-141) | Yes | No | No |
+| XRPL (exact/Payment) | Yes | No | No |
 
 ### HTTP Framework Integrations
 
@@ -327,7 +351,7 @@ const facilitator = new HTTPFacilitatorClient({
 });
 ```
 
-See the [x402 Ecosystem](https://www.x402.org/ecosystem?filter=facilitators) for available production facilitators.
+See the [facilitator directory](https://docs.x402.org/dev-tools/facilitators) for available production facilitators.
 
 ### 2. Update Network Identifiers
 

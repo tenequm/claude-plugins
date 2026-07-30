@@ -2,7 +2,7 @@
 
 ## Description
 
-x402 teaches an agent to build internet-native payment flows with the x402 open protocol (HTTP 402 Payment Required) - paid APIs, paywalled content, and AI-agent micropayments settled on-chain - using the TypeScript, Python, and Go SDKs across EVM, Solana, Stellar, and Aptos networks.
+x402 teaches an agent to build internet-native payment flows with the x402 open protocol (HTTP 402 Payment Required) - paid APIs, paywalled content, and AI-agent micropayments settled on-chain - using the TypeScript, Python, and Go SDKs across EVM, Solana, Stellar, Aptos, NEAR, and XRPL networks.
 
 This skill is ready for commercial and non-commercial use.
 
@@ -49,7 +49,7 @@ Mitigation: The SDKs support payment selectors, price limits, and lifecycle hook
 
 ## References
 
-- x402 protocol repo and spec (tracked upstream: @x402/core@2.17.0, @x402/evm@2.17.0, x402@2.14.0 on PyPI, go/v2@v2.17.0): https://github.com/x402-foundation/x402
+- x402 protocol repo and spec (tracked upstream: @x402/core@2.20.0, @x402/evm@2.20.0, x402@2.17.0 on PyPI, go/v2@v2.20.0): https://github.com/x402-foundation/x402
 - x402 documentation: https://docs.x402.org
 - Source: https://github.com/tenequm/skills/tree/main/skills/x402
 
@@ -65,7 +65,7 @@ Other properties: Generated code, when run by the user with funded keys, initiat
 
 ## Skill Version
 
-0.10.2
+0.11.0
 
 ## Ethical Considerations
 

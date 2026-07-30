@@ -1,6 +1,6 @@
 # TypeScript SDK Reference
 
-## Packages (v2.17.0)
+## Packages (v2.20.0)
 
 | Package | Purpose |
 |---------|---------|
@@ -14,6 +14,8 @@
 | `@x402/tvm` | TON scheme (jetton transfers, W5R1/Highload V3 facilitator) |
 | `@x402/keeta` | Keeta scheme (exact) |
 | `@x402/concordium` | Concordium scheme (native CCD, exact) |
+| `@x402/near` | NEAR scheme (NEP-366 SignedDelegate, NEP-141 `ft_transfer`, relayer-sponsored) |
+| `@x402/xrpl` | XRPL scheme (payer-signed `Payment`; tagged 2.20.0 but not yet published to npm) |
 | `@x402/express` | Express.js middleware |
 | `@x402/fastify` | Fastify middleware |
 | `@x402/hono` | Hono edge middleware |
@@ -25,6 +27,12 @@
 | `@x402/extensions` | Bazaar, offer-receipt, sign-in-with-x, payment-identifier, eip2612-gas-sponsoring, erc20-approval-gas-sponsoring |
 
 ## Recent Changes
+
+**v2.20.0** - New `@x402/near` (NEP-366 SignedDelegate + NEP-141 `ft_transfer`, relayer-sponsored) and `@x402/xrpl` (payer-signed XRPL `Payment`, no fee sponsorship) mechanism packages. Igra mainnet (`eip155:38833`) added to default-asset resolution. SVM `extra.recentBlockhash` / `extra.lastValidBlockHeight` construction hints. `createAuthHeaders` now throws when it returns a flat object instead of one keyed by facilitator path (`verify`/`settle`/`supported`) - previously this silently dropped authentication on every request. Request bodies are preserved on payment retry (`@x402/fetch`). SIWx Solana rejects small-order Ed25519 public keys.
+
+**v2.19.0** - **Security:** SIWx binds to an operator-configured `origin` rather than request-derived values; `createSIWxResourceServerExtension({ origin })` replaces the previously-documented `siwxResourceServerExtension`, and `domain`/`resourceUri` were removed from `declareSIWxExtension`. SIWx result types became discriminated unions (`isValid`/`invalidReason`/`invalidMessage`, `payer` instead of `address`) with 15 `invalid_siwx_*` codes. Batch-settlement EVM path-traversal and pre-verification channel-mutation fixes. Algorand CAIP-2 ids truncated to 32 chars (legacy ids normalized on input).
+
+**v2.18.0** - Core schemas accept explicit `null` for optional wire fields from Python/Go peers and normalize it to `undefined` (MCP cross-SDK interop). MCP payment matching selects the `accepts` entry matching the payload instead of always the first. `onAfterVerify` hooks can abort, dispatching `onVerifiedPaymentCanceled` with reason `after_verify_aborted`.
 
 **v2.17.0** - Expanded wallet compatibility: plain EOAs, deployed smart accounts (ERC-4337 / ERC-7579), counterfactual ERC-6492 wallets, and ERC-7702-delegated EOAs; pre-verification mirrors on-chain signature checking (a payment that passes `verify` succeeds at `settle`), with ERC-6492 now in `exact` + `batch-settlement`. Added `validateFacilitatorSupport` hook on `SchemeNetworkServer`, wired into `x402ResourceServer.initialize()` to fail fast on facilitator capability mismatch. Batch-settlement facilitator `authorizerSigner` made optional (`receiverAuthorizer` declared optional in `/supported`; new error `invalid_batch_settlement_evm_authorizer_not_configured`). New `@x402/concordium` package (native CCD, `ccd:*`).
 
@@ -350,6 +358,16 @@ const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 const response = await fetchWithPayment("http://localhost:4021/weather", { method: "GET" });
 const data = await response.json();
 
+// Sending a body? Set Content-Type explicitly.
+// The wrapper rebuilds the request via `new Request(input, init)`, and the Fetch spec
+// assigns `text/plain;charset=UTF-8` to a string body with no Content-Type. The initial
+// 402 does not care, but the paid retry can be rejected as a bad content type.
+await fetchWithPayment("http://localhost:4021/analyze", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ ticker: "AAPL" }),
+});
+
 // Read settlement response
 const httpClient = new x402HTTPClient(client);
 const settlement = httpClient.getPaymentSettleResponse(name => response.headers.get(name));
@@ -567,6 +585,10 @@ const facilitator = new HTTPFacilitatorClient({
   }),
 });
 
+// `createAuthHeaders` MUST return an object keyed by facilitator path.
+// Returning a flat `{ Authorization: ... }` now throws - it previously
+// silently dropped authentication on every request.
+
 // FacilitatorClient interface: verify(), settle(), getSupported()
 // Retries getSupported() on 429 with exponential backoff (3 attempts)
 ```
@@ -730,15 +752,17 @@ import { extractOffersFromPaymentRequired, extractReceiptFromResponse } from "@x
 ## Extensions: Sign-in-with-x
 
 ```typescript
-import { declareSIWxExtension, siwxResourceServerExtension } from "@x402/extensions/sign-in-with-x";
+import { createSIWxResourceServerExtension, declareSIWxExtension } from "@x402/extensions/sign-in-with-x";
 
-// Server: declare on route
+// Server: declare on route (`domain` and `resourceUri` were removed)
 extensions: {
-  ...declareSIWxExtension({ domain: "example.com", statement: "Sign in" }),
+  ...declareSIWxExtension({ statement: "Sign in", expirationSeconds: 300 }),
 }
 
-// Server: register
-server.registerExtension(siwxResourceServerExtension);
+// Server: register with a required operator-configured public origin
+server.registerExtension(
+  createSIWxResourceServerExtension({ origin: "https://api.example.com" }),
+);
 
 // Client
 import { createSIWxPayload, wrapFetchWithSIWx } from "@x402/extensions/sign-in-with-x";
