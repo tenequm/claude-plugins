@@ -81,7 +81,27 @@ It must return a serialized credential matching the `schema.credential.payload` 
 
 ## Server Implementation
 
-Use `Method.toServer()` to add verification logic to a base method:
+Use `Method.toServer()` to add verification logic to a base method.
+
+**Note on `verify` vs `validate` + `broadcast`.** The single `verify` hook shown below is now marked deprecated upstream: it "combines both operations and may consume payment state, so it cannot support a safe pre-check endpoint." The replacement splits it in two - `validate` for a non-mutating check that the credential satisfies the challenge, and `broadcast` for settlement:
+
+```ts
+const lightningServer = Method.toServer(lightning, {
+  async validate({ credential, challenge }) {
+    // non-mutating: does this credential satisfy the challenge?
+    assertPreimageMatches(credential.payload.preimage, challenge.request.paymentHash)
+  },
+  async broadcast({ credential, challenge }) {
+    // mutating: settle and return the receipt
+    return {
+      reference: challenge.request.paymentHash,
+      settlement: { amount: String(challenge.request.amount), currency: 'BTC' },
+    }
+  },
+})
+```
+
+`verify` still works and is still required by the type, so existing methods keep functioning. Implement the split pair for new methods, and for any method that should support a pre-check endpoint or hold settlement until downstream work succeeds. The rest of this page shows the `verify` form, which remains the simplest illustration of the contract.
 
 ```ts
 import { createHash } from 'node:crypto'
@@ -252,7 +272,9 @@ Extends the base method with server-side behavior:
 
 | Property | Type | Description |
 |---|---|---|
-| `verify` | `function` | Verifies a credential and returns a receipt. Receives `{ credential, challenge }` |
+| `verify` | `function` | **Deprecated.** Verifies a credential and returns a receipt. Receives `{ credential, challenge }` |
+| `validate` | `function` | Optional non-mutating pre-check that a credential satisfies the challenge |
+| `broadcast` | `function` | Settles the payment and returns a receipt |
 | `defaults` | `object` | Optional default values for challenge request fields |
 | `transformRequest` | `function` | Optional transform applied to the request before challenge generation |
 | `onRespond` | `function` | Optional hook called after verification, before response is sent |

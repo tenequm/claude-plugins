@@ -24,10 +24,24 @@ cargo add mpp --features tempo,client,server
 | `tower` | `tower` service integration |
 | `axum` | Axum extractors/handlers (implies `server`) |
 | `ws` | WebSocket session transport (implies `server` + `client`) |
+| `sqlite` | Persist and rehydrate native sessions (implies `tempo`) |
 | `stripe` | Stripe payment method |
 | `utils` | Shared helper utilities |
 
-Features are additive. `tempo` implies `evm`. `middleware` implies `client`. `axum` implies `server`. `ws` implies `server` and `client`. Default features include a TLS backend (`reqwest-default-tls`).
+Features are additive. `tempo` implies `evm`. `middleware` implies `client`. `axum` implies `server`. `ws` implies `server` and `client`. `sqlite` implies `tempo`.
+
+TLS backends: `reqwest-default-tls` (the default feature), `reqwest-native-tls`, `reqwest-rustls-tls`.
+
+---
+
+## What's New in 0.11.0
+
+- **TIP-1034 session client primitives**: descriptor-backed channels, precompile ABI helpers, voucher signing, and fee-sponsored session opens. Rust is one of only two SDKs with the session intent.
+- **`ChargeMethod::with_validate_sender`**: the Tempo hash-credential path now parses the `did:pkh:eip155` source before reserving the transaction hash and requires TIP-20 transfers to originate from the declared source address. The callback authorizes smart-account and relayer flows where the on-chain sender differs from the declared source.
+- **Sponsored charge dry-run**: sponsored charges simulate the co-signed transaction via `tempo_simulateV1` before broadcasting. The check **fails closed** - if the simulation RPC is unavailable, the charge is rejected.
+- **`TempoProvider::with_expected_chain_id`**: client-side chain pinning, rejecting charge challenges whose `methodDetails.chainId` conflicts with the configured chain.
+- **Breaking (source-level)**: `PaymentFailedContext` gained a `reason: Option<PaymentFailureReason>` field and is now `#[non_exhaustive]`. Construct it via `PaymentFailedContext::new()` and destructure with `..` so future fields stay non-breaking.
+- **Security**: oversized `WWW-Authenticate` `request` parameters are rejected before decoding.
 
 ---
 
@@ -149,28 +163,28 @@ let res = client.get("https://api.example.com/data").send().await?;
 
 ```toml
 [dependencies]
-mpp = { version = "0.10", features = ["client", "tempo"] }
+mpp = { version = "0.11", features = ["client", "tempo"] }
 ```
 
 ### Server Only
 
 ```toml
 [dependencies]
-mpp = { version = "0.10", features = ["server", "tempo"] }
+mpp = { version = "0.11", features = ["server", "tempo"] }
 ```
 
 ### Both Client and Server
 
 ```toml
 [dependencies]
-mpp = { version = "0.10", features = ["client", "server", "tempo"] }
+mpp = { version = "0.11", features = ["client", "server", "tempo"] }
 ```
 
 ### Client with reqwest-middleware
 
 ```toml
 [dependencies]
-mpp = { version = "0.10", features = ["middleware", "tempo"] }
+mpp = { version = "0.11", features = ["middleware", "tempo"] }
 reqwest = { version = "0.12", features = ["json"] }
 reqwest-middleware = "0.4"
 ```

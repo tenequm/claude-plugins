@@ -183,6 +183,31 @@ const charge = tempo.charge({
 
 Fee sponsorship is ignored for push-mode clients (they broadcast themselves).
 
+### Sponsorship Budget Caps
+
+Sponsoring gas means paying for other people's transactions, so the sponsor path carries two in-flight budget limits:
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `maxInFlightReservations` | `100` | Maximum sponsored transactions awaiting a terminal receipt |
+| `maxInFlightTotalFee` | `maxTotalFee * 10` | Maximum total fee reserved across in-flight sponsorships |
+
+Sponsorship also rejects non-canonical fee-payer calldata and client-supplied access lists before signing, so a client cannot smuggle extra state access into a transaction the server pays for.
+
+## Relays
+
+A relay delegates credential validation and broadcast to Tempo API or a compatible MPP relay, so your server does not need its own RPC path or broadcast wallet:
+
+```ts
+const charge = tempo.charge({
+  currency: "<USDC_TEMPO_MAINNET>",
+  recipient: "0xRecipient",
+  relay: { apiKey: process.env.TEMPO_API_KEY, apiBaseUrl: "https://api.tempo.xyz" },
+})
+```
+
+The relay contract has two hooks. `validate` (optional) checks whether a credential is valid for the underlying rail without reserving funds or making state changes; `broadcast` performs settlement. This mirrors the `validateCredential` / `broadcastCredential` split on the server. See [mpp.dev/advanced/relays](https://mpp.dev/advanced/relays).
+
 ## Optimistic Verification
 
 Skip waiting for on-chain confirmation. Returns immediately after simulation succeeds. Use when latency matters more than guaranteed confirmation.
@@ -221,9 +246,13 @@ const tempoSession = tempo.session({
 | `currency` | `string` | TIP-20 token address |
 | `recipient` | `string` | Payment recipient |
 | `store` | `Store` | Session state storage |
-| `escrowContract` | `string` | Escrow contract address |
+| `escrowContract` | `string` | Escrow contract address (v1) |
 | `sse` | `boolean` | Enable SSE streaming |
-| `voucherSigner` | `Account` | Account authorized to sign vouchers (renamed from `authorizedSigner` in mppx 0.6.29; the on-chain `channels()` ABI field is still `authorizedSigner`) |
+| `settlementSchedule` | `object` | Server-owned automatic settlement by `units`, `amount`, and/or `intervalMs` |
+| `bootstrap` | `boolean` | Emit hints so returning clients recover a prior channel on the same route |
+| `voucherSigner` | `Account` | **v1 only.** Account authorized to sign vouchers (renamed from `authorizedSigner` in mppx 0.6.29; the on-chain `channels()` ABI field is still `authorizedSigner`) |
+
+Without a `settlementSchedule` or your own `tempo.settle()` sweep, the server never converts accepted vouchers into on-chain funds. See `references/sessions.md`.
 
 **Store options:**
 
@@ -350,11 +379,12 @@ Create dynamic recipient addresses backed by Stripe PaymentIntents for deposit-m
 const paymentIntent = await stripe.paymentIntents.create({
   amount: 1000,
   currency: "usd",
-  payment_method_types: ["crypto"],
-  deposit_options: {
-    networks: ["tempo"],
+  payment_method_data: { type: "crypto" },
+  payment_method_options: {
+    crypto: { mode: "deposit", deposit_options: { networks: ["tempo"] } },
   },
+  confirm: true,
 });
 ```
 
-See [Stripe crypto deposits documentation](https://docs.stripe.com/crypto/deposit-mode) for full PaymentIntent configuration.
+Requires Stripe API version `2026-03-25.preview` or later. See the [deposit mode integration guide](https://docs.stripe.com/payments/deposit-mode-stablecoin-payments) for full PaymentIntent configuration, and `references/stripe-method.md` for the MPP-side wiring.

@@ -6,8 +6,8 @@
 npm install mppx viem
 ```
 
-**Peer dependencies** (install as needed, per mppx 0.8.1):
-- `viem` >= 2.51.0 (required)
+**Peer dependencies** (install as needed, per mppx 0.8.15):
+- `viem` >= 2.54.0 (required)
 - `@modelcontextprotocol/sdk` >= 1.25.0 (for MCP integration)
 - `hono` >= 4.12.25 (for Hono middleware)
 - `express` >= 5 (for Express middleware)
@@ -15,20 +15,22 @@ npm install mppx viem
 
 ## Package Exports
 
-Authoritative `exports` keys from `mppx` 0.8.1:
+Authoritative `exports` keys from `mppx` 0.8.15:
 
 | Subpath | Purpose |
 |---|---|
 | `mppx` | Main entry, core primitives |
 | `mppx/client` | Client SDK (polyfill / manual fetch) |
+| `mppx/client/node` | Node-only client extras: SQLite session `ChannelStore` |
 | `mppx/server` | Server SDK (charge, session, compose) |
 | `mppx/proxy` | Proxy server with service routing |
 | `mppx/stripe`, `mppx/stripe/client`, `mppx/stripe/server` | Stripe payment method |
 | `mppx/evm`, `mppx/evm/client`, `mppx/evm/server` | EVM (EIP-3009) payment method |
 | `mppx/x402` | x402 interop ("exact" flow compatibility) |
-| `mppx/tempo` | Tempo `Session` utilities (note: `tempo`/`Mppx` are NOT here - import those from `mppx/server` or `mppx/client`) |
-| `mppx/html` | Payment link UI customization (Config, Text, Theme types, init()) |
+| `mppx/tempo` | Tempo `Session` and `Ws` utilities (note: `tempo`/`Mppx` are NOT here - import those from `mppx/server` or `mppx/client`) |
+| `mppx/html` | Payment link UI customization (Config, Text, Theme types, `Html.init()`) |
 | `mppx/discovery` | OpenAPI-first discovery tooling |
+| `mppx/validation` | Programmatic server validation (the engine behind `mppx validate`) |
 | `mppx/cli`, `mppx/cli/plugins` | CLI config + plugin authoring |
 | `mppx/mcp/client` | MCP client wrapper (0.8.0+; `mppx/mcp-sdk/client` is a retained alias) |
 | `mppx/mcp/server` | MCP server wrapper (0.8.0+; `mppx/mcp-sdk/server` is a retained alias) |
@@ -133,7 +135,45 @@ const server = http.createServer(Mppx.toNodeListener(handler))
 return Response.requirePayment(challenges)
 ```
 
+### Credential Lifecycle: validate vs broadcast
+
+Settlement is split into a non-mutating pre-check and a mutating settle, so a server can answer "would this credential work?" without consuming it:
+
+```ts
+// Non-mutating: does this credential satisfy the challenge?
+const result = await mppx.validateCredential(authorizationHeaderValue)
+
+// Mutating: settle the payment and produce a receipt
+const receipt = await mppx.broadcastCredential(authorizationHeaderValue)
+```
+
+`mppx.verifyCredential()` is a **deprecated** alias for `broadcastCredential()`: it "maps to the same mutating operation and does not provide validation-only semantics." Use the split pair for anything that needs a safe pre-check endpoint, or that must confirm work succeeded before taking payment.
+
+The same split exists at the method level - see `references/custom-methods.md`.
+
 ## Client SDK (`mppx/client`)
+
+The client module exports `Mppx`, `Fetch`, `Transport`, `Expires`, and `Constants`.
+
+### Entry Points
+
+```ts
+import { Fetch, Mppx } from 'mppx/client'
+
+// Standalone payment-aware fetch - no global mutation
+const paidFetch = Fetch.from({ methods: [tempo({ account })] })
+const res = await paidFetch('https://api.example.com/data')
+
+// Explicit global install / uninstall
+Fetch.polyfill({ methods: [tempo({ account })] })
+Fetch.restore()
+
+// Undo an instance's polyfill
+const mppx = Mppx.create({ methods: [tempo({ account })] })
+Mppx.restore()
+```
+
+Prefer `Fetch.from()` in libraries and tests: patching `globalThis.fetch` in a shared process affects every caller, including ones that should not be paying.
 
 ### With Polyfill (Default)
 
@@ -183,8 +223,22 @@ const res = await mppx.fetch(url, {
 - `transport` - protocol transport (optional)
 - `onChallenge` - callback when a 402 challenge is received (optional)
 - `acceptPaymentPolicy` - controls when the `Accept-Payment` header is injected on outgoing requests: `'always'`, `'same-origin'`, `'never'`, or `{ origins: string[] }` (supports `*.` wildcards)
+- `maxPaymentRetries` - maximum payment challenge retries after the initial response, default `3`. Incremental challenges (a server re-issuing a 402 with adjusted requirements) consume retries
 
 **Breaking change (mppx 0.6.0):** polyfilled `fetch` in browsers no longer sends `Accept-Payment` on every request - it now defaults to **same-origin** only. Non-browser environments are unaffected. Use `acceptPaymentPolicy` to opt cross-origin payment endpoints back in.
+
+### Node SQLite Channel Store (`mppx/client/node`)
+
+Persist session channels across processes on Node without standing up Redis:
+
+```ts
+import { createSqliteChannelStore, defaultChannelDatabasePath } from 'mppx/client/node'
+
+const channelStore = createSqliteChannelStore({ path: defaultChannelDatabasePath() })
+Mppx.create({ methods: [tempo.session({ account, maxDeposit: '1', channelStore })] })
+```
+
+`defaultChannelDatabasePath()` points at Tempo Wallet's own `channels.db`, and the store can read existing wallet-cli v2 session rows - so a CLI-opened channel is reusable from your own process, and vice versa.
 
 ## Framework Middleware
 
@@ -255,75 +309,12 @@ const app = new Elysia()
   .get('/paid', () => ({ data: 'paid content' }))
 ```
 
-## Proxy Server (`mppx/proxy`)
+## Proxy and Discovery
 
-### Creating a Proxy
+The payments proxy (`mppx/proxy`) and discovery documents (`mppx/discovery`) have their own reference: `references/discovery-and-proxy.md`. Two things worth flagging here because they are easy to get wrong:
 
-```ts
-import { Proxy, openai, anthropic, stripe } from 'mppx/proxy'
-import { Mppx, tempo } from 'mppx/server'
-
-const mppx = Mppx.create({
-  methods: [tempo()],
-  secretKey: process.env.MPP_SECRET_KEY,
-})
-
-const proxy = Proxy.create({
-  title: 'My API Proxy',
-  description: 'Paid access to AI APIs',
-  basePath: '/api',
-  services: [
-    openai({
-      apiKey: process.env.OPENAI_API_KEY,
-      routes: {
-        'POST /v1/chat/completions': mppx.charge({ amount: '0.005' }),
-        'GET /v1/models': mppx.free(),
-      },
-    }),
-    anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      routes: {
-        'POST /v1/messages': mppx.charge({ amount: '0.01' }),
-      },
-    }),
-    stripe({
-      apiKey: process.env.STRIPE_API_KEY,
-      routes: {
-        'POST /v1/charges': mppx.charge({ amount: '0.01' }),
-      },
-    }),
-  ],
-})
-```
-
-Built-in service presets (all from `mppx/proxy`): `openai()`, `anthropic()`, `stripe()`. Each takes an `apiKey` and a `routes` map; use `mppx.free()` to mark a route as free.
-
-### Discovery Endpoints
-
-The proxy auto-serves these (all active - none are deprecated/410):
-
-- `GET /discover` - JSON service list (markdown for AI/terminal user agents)
-- `GET /discover/{id}` and `GET /discover/{id}.md` - single service detail
-- `GET /discover/all` and `GET /discover/all.md` - all services with full route details
-- `GET /llms.txt` - LLM-readable overview (`GET /discover.md` is an alias)
-
-### Discovery Documents (`mppx/discovery`)
-
-Beyond the proxy, any server can publish a standalone discovery document. `mppx/discovery` generates a `GET /openapi.json` endpoint with canonical `x-payment-info.offers[]` entries on each paid route (a Next.js helper and a CLI for static generation are included). Register the service on a **registry** so agents can find it:
-
-- [MPPScan](https://mppscan.com) - public registry with search/analytics (one-click register)
-- [MPP Services directory](https://mpp.dev/services) - curated list (submit a PR)
-
-### Handlers
-
-```ts
-// Fetch API (Cloudflare Workers, Bun, Deno)
-export default { fetch: proxy.fetch }
-
-// Node.js http server
-import http from 'node:http'
-http.createServer(proxy.listener).listen(3000)
-```
+- Free proxy routes are declared with the literal value `true` (`'GET /v1/models': true`). There is **no** `mppx.free()` helper.
+- The proxy exposes both `proxy.fetch` (Fetch API runtimes) and `proxy.listener` (Node `http`).
 
 ## MCP SDK
 
@@ -358,36 +349,22 @@ const client = McpClient.wrap(baseClient, {
 
 The MCP subpaths moved to `mppx/mcp/server` and `mppx/mcp/client` in mppx 0.8.0; the `mppx/mcp-sdk/*` specifiers remain as aliases. `McpClient.wrap` is now the single client-wrap API - the in-place `wrapClient` variant was collapsed into it. MCP-over-HTTP challenges settle in the same payment-aware fetch: `Transport.http()` extracts JSON-RPC `-32042` challenges and retries with the credential in MCP metadata, so a single client can pay both HTTP `402`s and MCP-over-HTTP challenges.
 
+## Transports
+
+Transports are pluggable on both client and server, exported as a `Transport` namespace from `mppx/client` and `mppx/server`:
+
+| Export | Purpose |
+|---|---|
+| `Transport.http()` | HTTP header encoding; also extracts MCP-over-HTTP `-32042` challenges |
+| `Transport.mcp()` | Raw JSON-RPC message handling |
+| `Transport.mcpSdk()` | For use with `@modelcontextprotocol/sdk` |
+| `Transport.from()` | Build a custom transport |
+
+Use `Transport.mcp()` when handling raw JSON-RPC messages directly; with the official MCP SDK, use `Transport.mcpSdk()` instead.
+
 ## CLI
 
-### Account Management
-
-```bash
-# Create account (stored in system keychain, auto-funded on testnet)
-mppx account create
-
-# List accounts
-mppx account list
-```
-
-### Making Requests
-
-```bash
-# Simple paid request
-mppx https://api.example.com/data
-
-# Inspect challenge without paying
-mppx --inspect https://api.example.com/data
-
-# Custom method, headers, body
-mppx -X POST -H "Content-Type: application/json" -d '{"prompt":"hello"}' https://api.example.com/chat
-```
-
-### Plugins
-
-```bash
-mppx plugins add tempo/stripe
-```
+The CLI has its own reference: `references/cli.md`. Note that `mppx/cli` (config via `defineConfig`) and `mppx/cli/plugins` (plugin authoring) are module exports, not a `mppx plugins` command - no such command exists.
 
 ## Core Primitives
 
@@ -440,24 +417,28 @@ const twoHours = Expires.hours(2)
 
 ## Error Classes
 
-All errors extend `PaymentError` and expose `.toProblemDetails()` for RFC 9457 responses.
+**17** error classes extend `PaymentError` and expose `.toProblemDetails()` for RFC 9457 responses.
 
 **General errors:**
 - `MalformedCredentialError` - credential cannot be parsed
 - `InvalidChallengeError` - challenge is invalid or tampered
 - `VerificationFailedError` - signature or HMAC verification failed
 - `PaymentRequiredError` - payment is required (402)
+- `PaymentActionRequiredError` - the payer must take an action before payment can complete
 - `PaymentExpiredError` - challenge or credential has expired
 - `PaymentInsufficientError` - payment amount too low
 - `PaymentMethodUnsupportedError` - method not accepted by server
+- `InvalidPayloadError` - credential payload fails its schema
+- `BadRequestError` - malformed request
 
 **Session-specific errors:**
 - `InsufficientBalanceError` - session channel balance too low
 - `InvalidSignatureError` - session state signature invalid
+- `SignerMismatchError` - voucher signed by an unexpected signer
+- `AmountExceedsDepositError` - cumulative voucher exceeds the channel deposit
+- `DeltaTooSmallError` - voucher increment below the minimum
 - `ChannelNotFoundError` - session channel does not exist
 - `ChannelClosedError` - session channel has been closed
-
-Plus additional error types (14 total), all following the same pattern.
 
 ```ts
 try {
@@ -469,6 +450,10 @@ try {
   }
 }
 ```
+
+### Structured Error Metadata
+
+`PaymentError` carries a `details` record - "safe method-specific context for diagnostics and relay responses" - alongside the human-facing `hint`. Both surface in the problem document. This is the practical way to see *why* a payment failed, since mppx otherwise re-emits internal failures as a generic 402 with a fresh challenge.
 
 ## Store Interface
 
@@ -531,18 +516,38 @@ Use cases: replay protection (atomic deduplication of proof credentials), channe
 
 Use [Privy](https://docs.privy.io) server-managed wallets as MPP signers for agentic payment flows. Install: `npm install @privy-io/node mppx viem`.
 
-The pattern: create a custom viem `Account` that delegates signing to Privy's API, then pass it to `tempo({ account })`:
+### Recommended: `createViemAccount`
+
+`@privy-io/node` version `0.20.0` or later ships a helper that builds the viem `Account` for you. It "delegates signatures to the Privy wallet, so it replaces any local viem account" - including the Tempo custom-serializer handling that previously had to be written by hand:
+
+```ts
+import { PrivyClient } from '@privy-io/node'
+import { createViemAccount } from '@privy-io/node/viem'
+import { Mppx, tempo } from 'mppx/client'
+
+const privy = new PrivyClient({
+  appId: process.env.PRIVY_APP_ID!,
+  appSecret: process.env.PRIVY_APP_SECRET!,
+})
+
+const wallet = await privy.wallets().create({ chain_type: 'ethereum' })
+const account = createViemAccount(privy, { walletId: wallet.id, address: wallet.address })
+
+const mppx = Mppx.create({ polyfill: false, methods: [tempo({ account })] })
+const response = await mppx.fetch('https://api.example.com/paid')
+```
+
+**Wallet ownership matters.** Server-side signing works with **app-owned server wallets**. User-owned embedded wallets cannot be signed for from a server without authorization keys or key quorums, and attempts fail with a 401 about missing authorization or user signing keys. Provision a server wallet for agent payment flows rather than reaching for a user's embedded wallet.
+
+### Manual construction (background)
+
+Before `createViemAccount`, the account was assembled by hand with `toAccount()`. It is still useful to understand what the helper does, and necessary if you are on an older `@privy-io/node`:
 
 ```ts
 import { PrivyClient } from '@privy-io/node'
 import { Mppx, tempo } from 'mppx/client'
 import { toAccount } from 'viem/accounts'
 import { keccak256 } from 'viem'
-
-const privy = new PrivyClient({
-  appId: process.env.PRIVY_APP_ID!,
-  appSecret: process.env.PRIVY_APP_SECRET!,
-})
 
 function createPrivyAccount(walletId: string, address: `0x${string}`) {
   return toAccount({
@@ -582,11 +587,7 @@ function createPrivyAccount(walletId: string, address: `0x${string}`) {
   })
 }
 
-// Create wallet + MPP client
-const wallet = await privy.wallets().create({ chain_type: 'ethereum' })
 const account = createPrivyAccount(wallet.id, wallet.address as `0x${string}`)
-const mppx = Mppx.create({ polyfill: false, methods: [tempo({ account })] })
-const response = await mppx.fetch('https://api.example.com/paid')
 ```
 
 **Key details:**
@@ -613,3 +614,30 @@ const schema = z.object({
   billing: z.period(),     // billing period
 })
 ```
+
+Conversion and input helpers also ship from the same namespace: `z.datetimeInput()` (accepts the several datetime input shapes mppx tolerates), `z.toDate()`, `z.toDatetimeString()`, and `z.unwrapOptional()`.
+
+## Payment Hooks
+
+Register on the object returned by `Mppx.create()`. Each registration returns an unsubscribe function.
+
+```ts
+// Server (mppx/server)
+const payment = Mppx.create({ methods: [tempo.charge(), tempo.session()] })
+payment.onChallengeCreated(({ challenge, method, request }) => {})
+payment.onPaymentSuccess(({ method, receipt, request }) => {})
+payment.onPaymentFailed(({ error, method, submittedChallenge }) => {})
+payment.onSessionSettlement(({ trigger, txHash, channelId, cumulative, delta }) => {})
+payment.on('*', ({ name, payload }) => {})
+
+// Client (mppx/client)
+const mppx = Mppx.create({ methods: [tempo.charge({ account })], polyfill: false })
+mppx.onChallengeReceived(({ challenge }) => { /* return a credential string to override */ })
+mppx.onCredentialCreated(({ challenge }) => {})
+mppx.onPaymentResponse(({ challenge, response }) => {})
+mppx.onPaymentFailed(({ challenge, error }) => {})
+```
+
+Server handlers are awaited inline and sequentially on the request path, so slow handlers delay the response. Every hook except client `onChallengeReceived` is a pure observer: thrown errors are swallowed and never change payment handling. Filter by intent with `method.intent` (server) or `challenge.intent` (client) - `'charge'`, `'session'`, or `'subscription'`.
+
+`onSessionSettlement` reports on-chain session settlement with chain-agnostic context: the `trigger` that caused it (scheduled vs explicit), the transaction hash, the channel ID, and the cumulative and incremental amounts. It is the hook to wire up if you need a settlement ledger. See [mpp.dev/advanced/payment-hooks](https://mpp.dev/advanced/payment-hooks).

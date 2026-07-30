@@ -76,10 +76,12 @@ const charge = stripe.charge({
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `client` | `Stripe` | One of `client` or `secretKey` | Stripe SDK instance |
-| `secretKey` | `string` | One of `client` or `secretKey` | Stripe secret key (creates SDK internally) |
+| `secretKey` | `string` | One of `client` or `secretKey` | Stripe secret key. mppx then makes raw API calls to Stripe instead of using an SDK instance - use this when you do not need to customize the SDK |
 | `networkId` | `string` | Yes | Stripe profile (`profile_...`) ID from your Stripe Dashboard |
 | `paymentMethodTypes` | `string[]` | Yes | Accepted payment methods (e.g. `['card']`, `['card', 'link']`) |
+| `decimals` | `number` | No | Currency decimal places (`2` for fiat) |
 | `metadata` | `Record<string, string>` | No | Key-value pairs attached to the PaymentIntent |
+| `html` | `object` | No | Payment-link mode: `{ createTokenUrl, publishableKey }` renders a browser payment page for the Stripe method |
 
 ---
 
@@ -175,15 +177,23 @@ npx @stripe/link-cli mpp pay https://your-endpoint.com/resource \
 
 For a programmatic client, the `createToken` callback on the client method (above) calls a server-side endpoint you control that holds the Stripe secret key and returns the SPT, which the client then includes in the credential payload. The legacy `stripe.rawRequest('POST', '/v1/shared_payment/granted_tokens', ...)` endpoint is no longer documented in Stripe's canonical MPP guide - prefer the `@stripe/link-cli` flow.
 
+### Security: derive SPT parameters server-side
+
+The SPT proxy endpoint is a payment-authorization boundary, not a passthrough. Per Stripe's guidance, the server **must** derive SPT parameters (amount, currency, expiry, limits) itself rather than accepting them from the client: "A thin proxy that forwards client-supplied parameters effectively delegates payment authorization to an untrusted client."
+
+In practice: take the challenge (or your own pricing table) as the source of truth for amount and currency, and never let a request body set them.
+
 ## Crypto (On-Chain) Method
 
-Stripe MPP can also accept direct on-chain payments via Tempo crypto deposit addresses. Stripe generates a deposit address per PaymentIntent and captures automatically when funds settle on-chain. Crypto PaymentIntents require API version `2026-03-04.preview` or later.
+Stripe MPP can also accept direct on-chain payments via Tempo crypto deposit addresses. Stripe generates a deposit address per PaymentIntent and captures automatically when funds settle on-chain. Crypto PaymentIntents require API version `2026-03-25.preview` or later.
+
+**Availability**: stablecoin payments require requesting the **Stablecoins and Crypto** payment method in the Stripe Dashboard, and are available to businesses in all US states except New York, plus 30+ other countries on request. Fiat SPT requires a US legal entity.
 
 ```ts
 import Stripe from 'stripe'
 
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-03-04.preview',
+  apiVersion: '2026-03-25.preview',
 })
 
 // Generate a Tempo deposit address backed by a Stripe PaymentIntent
@@ -201,7 +211,16 @@ const paymentIntent = await stripeClient.paymentIntents.create({
 // -> use as the `recipient` in a tempo.charge() method
 ```
 
-Present fiat (SPT) and crypto together on one endpoint with `Mppx.compose(...)`. See [docs.stripe.com/payments/machine/mpp](https://docs.stripe.com/payments/machine/mpp) for the full two-method handler.
+Present fiat (SPT) and crypto together on one endpoint with `Mppx.compose(...)`. See [docs.stripe.com/payments/machine/mpp](https://docs.stripe.com/payments/machine/mpp) for the full two-method handler and the [deposit mode integration guide](https://docs.stripe.com/payments/deposit-mode-stablecoin-payments) for how crypto PaymentIntents behave.
+
+Note that Stripe's canonical example derives the MPP `secretKey` from the Stripe secret rather than managing a separate one:
+
+```ts
+const mppSecretKey = crypto.createHmac('sha256', process.env.STRIPE_SECRET_KEY!)
+  .update('mpp-challenge-signing').digest('base64')
+```
+
+Sandbox PaymentIntents do not monitor crypto testnets, so testnet deposits are not auto-detected - use Stripe's simulate-crypto-deposit test helper.
 
 ---
 

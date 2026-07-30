@@ -2,8 +2,8 @@
 name: mpp
 description: "Build with MPP (Machine Payments Protocol) - the open protocol for machine-to-machine payments over HTTP 402. Use when developing paid APIs, payment-gated content, AI agent payment flows, MCP tool payments, pay-per-token streaming, or any service using HTTP 402 Payment Required. Covers the mppx TypeScript SDK with Hono/Express/Next.js/Elysia middleware, pympp Python SDK, and mpp Rust SDK. Supports Tempo stablecoins, Stripe cards, Lightning Bitcoin, and custom payment methods. Includes charge (one-time) and session (streaming pay-as-you-go) intents. Make sure to use this skill whenever the user mentions mpp, mppx, machine payments, HTTP 402 payments, Tempo payments, payment channels, pay-per-token, paid API endpoints, or payment-gated services."
 metadata:
-  version: "0.8.3"
-  upstream: "mppx@0.8.1, pympp@0.9.0, mpp@0.10.4, @buildonspark/lightning-mpp-sdk@0.1.4, @stellar/mpp@0.7.0, mpp-card@0.1.8"
+  version: "0.9.0"
+  upstream: "mppx@0.8.15, pympp@0.9.1, mpp@0.11.0, @buildonspark/lightning-mpp-sdk@0.1.4, @stellar/mpp@0.7.1, @solana/mpp@0.7.0, @redotpay/mpp@0.1.2, @defuse-protocol/nearintents-mpp-sdk@0.1.2, mpp-card@0.1.8"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/mpp
     emoji: "💸"
@@ -24,6 +24,12 @@ metadata:
       - name: RPC_URL
         required: false
         description: Generic RPC endpoint override (mppx CLI fallback).
+      - name: MPPX_ACCOUNT
+        required: false
+        description: Default account name for the mppx CLI.
+      - name: MPPX_CONFIG
+        required: false
+        description: Path to the mppx CLI config file.
       - name: STRIPE_SECRET_KEY
         required: false
         description: Stripe API secret key for the Stripe payment method.
@@ -58,12 +64,12 @@ The core protocol spec is submitted to the IETF as the [Payment HTTP Authenticat
 
 ## Tempo token addresses
 
-Public Tempo token addresses referenced throughout this skill. Use the placeholder names in code; full addresses are in the [Tempo documentation](https://docs.tempo.finance).
+Public Tempo token addresses referenced throughout this skill. Use the placeholder names in code; full addresses are in the [Tempo documentation](https://docs.tempo.xyz).
 
-| Token              | Network  | Placeholder          |
-|--------------------|----------|----------------------|
+| Token              | Network  | Placeholder            |
+|--------------------|----------|------------------------|
 | USDC.e (mainnet)   | mainnet  | `<USDC_TEMPO_MAINNET>` |
-| pathUSD (testnet)  | testnet  | `<PATHUSD_TESTNET>`  |
+| pathUSD (testnet)  | testnet  | `<PATHUSD_TESTNET>`    |
 
 ## When to Use
 
@@ -104,20 +110,19 @@ MPP is payment-method agnostic. Each method defines its own settlement rail:
 
 | Method | Rail | SDK Package | Status |
 |--------|------|-------------|--------|
-| [Tempo](/payment-methods/tempo) | TIP-20 stablecoins on Tempo chain | `mppx` (built-in) | Production |
-| [Stripe](/payment-methods/stripe) | Cards/wallets (SPT) + on-chain crypto deposit | `mppx` (built-in) | Production |
-| [EVM](/payment-methods/evm) | EIP-3009 stablecoin authorizations (x402-exact compatible) | `mppx` (built-in) | Production |
-| [Lightning](/payment-methods/lightning) | Bitcoin over Lightning Network | `@buildonspark/lightning-mpp-sdk` | Production |
-| [Stellar](/payment-methods/stellar) | SEP-41 tokens on Stellar, charge only (the non-functional `channel` intent was removed in `@stellar/mpp` 0.7.0) | `@stellar/mpp` | Production |
-| [Solana](/payment-methods/solana) | Solana-native charge + session (SOL, SPL, Token-2022) | `@solana/mpp` | Production |
-| [Monad](/payment-methods/monad) | Monad charge (ERC-3009, settlement modes) | `@monad-crypto/mpp` | Production |
-| [RedotPay](/payment-methods/redotpay) | RedotPay balance (`rdt`) or stablecoin proof, charge only | `@redotpay/mpp` * | Production |
-| [Card](/payment-methods/card) | Encrypted network tokens (Visa) | `mpp-card` | Production |
+| [Tempo](https://mpp.dev/payment-methods/tempo) | TIP-20 stablecoins on Tempo chain | `mppx` (built-in) | Production |
+| [Stripe](https://mpp.dev/payment-methods/stripe) | Cards/wallets (SPT) + on-chain crypto deposit | `mppx` (built-in) | Production |
+| [EVM](https://mpp.dev/payment-methods/evm) | EIP-3009 stablecoin authorizations (x402-exact compatible) | `mppx` (built-in) | Production |
+| [Lightning](https://mpp.dev/payment-methods/lightning) | Bitcoin over Lightning Network | `@buildonspark/lightning-mpp-sdk` | Production |
+| [Stellar](https://mpp.dev/payment-methods/stellar) | SEP-41 tokens on Stellar, charge + `channel` | `@stellar/mpp` | Production |
+| [Solana](https://mpp.dev/payment-methods/solana) | Solana-native charge + session (SOL, SPL, Token-2022) | `@solana/mpp` | Production |
+| [Monad](https://mpp.dev/payment-methods/monad) | Monad charge (ERC-3009, settlement modes) | `@monad-crypto/mpp` | Production |
+| [NEAR Intents](https://mpp.dev/payment-methods/nearintents) | Cross-chain charge via 1Click deposit addresses | `@defuse-protocol/nearintents-mpp-sdk` | Production |
+| [RedotPay](https://mpp.dev/payment-methods/redotpay) | RedotPay balance (`rdt`) or stablecoin proof, charge only | `@redotpay/mpp` | Production |
+| [Card](https://mpp.dev/payment-methods/card) | Encrypted network tokens (Visa) | `mpp-card` | Production |
 | Custom | Any rail | `Method.from()` + `Method.toClient/toServer` | Extensible |
 
-\* `@redotpay/mpp` is the import shown in the [RedotPay docs](https://mpp.dev/payment-methods/redotpay) (`@redotpay/mpp/server`, `@redotpay/mpp/client`) but is not yet published to public npm - confirm availability before depending on it.
-
-Two payment intents:
+Stellar's `channel` intent is implemented in `@stellar/mpp` while its wire spec is still being drafted - treat the details as subject to change. NEAR Intents settlement is **not trustless**: it routes through a settlement backend, advertised as `methodDetails.settlementBackend: "near-intents"` so agents can apply per-method risk policy.
 
 | Intent | Pattern | Best For |
 |--------|---------|----------|
@@ -144,7 +149,9 @@ export async function handler(request: Request) {
 }
 ```
 
-Install: `npm install mppx viem`
+Install: `npm install mppx viem` (mppx 0.8.15 requires `viem >= 2.54.0`).
+
+Validate the finished server end-to-end with `npx mppx validate http://localhost:3000`.
 
 ## Quick Start: Client (TypeScript)
 
@@ -161,28 +168,26 @@ const res = await fetch('https://api.example.com/paid')
 // Payment happens transparently when server returns 402
 ```
 
-In browsers, mppx 0.6.0 changed the default: polyfilled `fetch` only sends `Accept-Payment` to **same-origin** endpoints. For cross-origin paid APIs set `acceptPaymentPolicy` (`'always'` / `{ origins: [...] }`). See `references/typescript-sdk.md`.
+To avoid mutating the global, use `Fetch.from()` for a standalone payment-aware fetch, `Fetch.polyfill()` / `Fetch.restore()` to install and remove the global wrapper explicitly, and `Mppx.restore()` to undo an instance's polyfill. In browsers, mppx 0.6.0 changed the default: polyfilled `fetch` only sends `Accept-Payment` to **same-origin** endpoints, so cross-origin paid APIs need `acceptPaymentPolicy` (`'always'` / `{ origins: [...] }`). Client fetch retries incremental challenges up to `maxPaymentRetries` (default 3). See `references/typescript-sdk.md`.
 
 ## Quick Start: Server (Python)
 
 ```python
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+from mpp import Credential, Receipt
 from mpp.server import Mpp
 from mpp.methods.tempo import tempo, ChargeIntent
 
 app = FastAPI()
-mpp = Mpp.create(method=tempo(
+server = Mpp.create(method=tempo(
     currency="<PATHUSD_TESTNET>",
     recipient="0xYourAddress", intents={"charge": ChargeIntent()},
 ))
 
 @app.get("/resource")
-async def get_resource(request: Request):
-    result = await mpp.charge(authorization=request.headers.get("Authorization"), amount="0.50")
-    if isinstance(result, Challenge):
-        return JSONResponse(status_code=402, content={"error": "Payment required"},
-            headers={"WWW-Authenticate": result.to_www_authenticate(mpp.realm)})
-    return {"data": "paid content"}
+@server.pay(amount="0.50")
+async def get_resource(request, credential: Credential, receipt: Receipt):
+    return {"data": "paid content", "payer": credential.source}
 ```
 
 Install: `pip install "pympp[tempo]"`. See `references/python-sdk.md` for full patterns.
@@ -198,7 +203,7 @@ Each framework has its own import (`mppx/nextjs`, `mppx/hono`, `mppx/express`, `
 ```typescript
 // Next.js
 import { Mppx, tempo } from 'mppx/nextjs'
-const mppx = Mppx.create({ methods: [tempo({ currency: '0x20c0...', recipient: '0x...' })] })
+const mppx = Mppx.create({ methods: [tempo({ currency: '<PATHUSD_TESTNET>', recipient: '0x...' })] })
 export const GET = mppx.charge({ amount: '0.1' })(() => Response.json({ data: '...' }))
 
 // Hono
@@ -212,140 +217,116 @@ See `references/typescript-sdk.md` for Express and Elysia examples.
 
 Sessions open a payment channel once, then use off-chain vouchers for each request - no blockchain transaction per request. Sub-100ms latency, near-zero per-request fees.
 
-**Sessions v2 (default since mppx 0.7.0):** `tempo.session()` is now the TIP-1034 precompile channel flow. The previous escrow-contract implementation is **Sessions v1**, still available as `tempo.sessionLegacy` (server and client). A v2-expecting client rejects a v1 session and falls back to the charge path, so a server left on old mppx (serving v1 sessions) can silently deny newer clients their working path - keep client and server on matching flows. Two client APIs: `tempo.session({ account, maxDeposit })` creates the method for `Mppx.create()` registration (transparent 402 handling via `fetch`), while `tempo.session.manager({ account, maxDeposit })` returns a managed client for direct lifecycle control (`.sse()`, `.close()`). See `references/sessions.md`.
+**Sessions v2 (default since mppx 0.7.0):** `tempo.session()` is the TIP-1034 precompile channel flow. The earlier escrow-contract implementation is **Sessions v1**, still available as the now-deprecated `tempo.sessionLegacy`. A v2-expecting client rejects a v1 session and falls back to the charge path, so a server left on old mppx can silently deny newer clients their working path - keep client and server on matching flows. Two client APIs: `tempo.session({ account, maxDeposit })` registers the method with `Mppx.create()` (transparent 402 handling via `fetch`), while `tempo.session.manager({ account, maxDeposit })` returns a managed client for direct lifecycle control (`.sse()`, `.close()`).
 
 ```typescript
-// Server - session endpoint
-const result = await mppx.session({
-  amount: '0.001',
-  unitType: 'token',
-})(request)
+// Server - session endpoint with automatic settlement
+const mppx = Mppx.create({
+  methods: [tempo.session({
+    currency: '<PATHUSD_TESTNET>', recipient: '0x...',
+    store: Store.redis(redis),
+    settlementSchedule: { amount: '1.00', intervalMs: 300_000 },
+    bootstrap: true, // let returning clients recover their channel on this route
+  })],
+})
+const result = await mppx.session({ amount: '0.001', unitType: 'token' })(request)
 if (result.status === 402) return result.challenge
 return result.withReceipt(Response.json({ data: '...' }))
+```
 
+**Settlement is not automatic unless you configure it.** A session server verifies and stores vouchers, but nothing converts them to on-chain funds without either a `settlementSchedule` or your own sweep via `tempo.settle()` / `tempo.settleBatch()`. Without one, revenue accrues as unredeemed vouchers and channels stay open holding payer deposits. See `references/sessions.md`.
+
+```typescript
 // Server - SSE streaming with per-word billing
-const mppx = Mppx.create({
-  methods: [tempo({ currency: '0x20c0...', recipient: '0x...', sse: true })],
-})
 export const GET = mppx.session({ amount: '0.001', unitType: 'word' })(
-  async () => {
-    const words = ['hello', 'world']
-    return async function* (stream) {
-      for (const word of words) {
-        await stream.charge()
-        yield word
-      }
+  async () => async function* (stream) {
+    for (const word of ['hello', 'world']) {
+      await stream.charge()
+      yield word
     }
   }
 )
 
 // Client - session with auto-managed channel
-import { Mppx, tempo } from 'mppx/client'
-Mppx.create({
-  methods: [tempo({ account, maxDeposit: '1' })], // Lock up to 1 pathUSD
-})
+Mppx.create({ methods: [tempo({ account, maxDeposit: '1' })] })
 const res = await fetch('http://localhost:3000/api/resource')
-// 1st request: opens channel on-chain
-// 2nd+ requests: off-chain vouchers (no on-chain tx)
+// 1st request: opens channel on-chain; 2nd+: off-chain vouchers
 ```
 
-**WebSocket transport**: Sessions also support WebSocket streaming via `Ws.serve()`. The WebSocket protocol uses typed messages (`mpp: 'authorization'`, `mpp: 'message'`, `mpp: 'payment-close-request'`, etc.) for payment negotiation alongside data delivery. See `references/sessions.md` for the full session lifecycle, escrow contracts, SSE patterns, and WebSocket integration.
+**WebSocket transport**: Sessions also support WebSocket streaming via `Ws.serve()`, using typed messages (`mpp: 'authorization'`, `mpp: 'message'`, `mpp: 'payment-close-request'`, etc.) for payment negotiation alongside data delivery. See `references/sessions.md` for the full lifecycle, settlement, SSE patterns, and WebSocket integration.
 
 ## Multi-Method Support
 
 Accept Tempo stablecoins, Stripe cards, and Lightning Bitcoin on a single endpoint:
 
 ```typescript
-import Stripe from 'stripe'
-import { Mppx, tempo, stripe } from 'mppx/server'
-import { spark } from '@buildonspark/lightning-mpp-sdk/server'
-
 const mppx = Mppx.create({
   methods: [
-    tempo({ currency: '0x20c0...', recipient: '0x...' }),
-    stripe.charge({ client: new Stripe(key), networkId: 'internal', paymentMethodTypes: ['card'] }),
+    tempo({ currency: '<PATHUSD_TESTNET>', recipient: '0x...' }),
+    stripe.charge({ client: new Stripe(key), networkId: 'profile_...', paymentMethodTypes: ['card'] }),
     spark.charge({ mnemonic: process.env.MNEMONIC! }),
   ],
 })
 ```
 
-Use `compose()` to present multiple methods in a single 402 response with per-route pricing. See `references/typescript-sdk.md` for compose patterns.
+Use `Mppx.compose()` to present multiple methods in a single 402 response with per-route pricing. Apply the same branch at the challenge site and the verification site, or the 402 advertises fewer options than the server accepts. See `references/typescript-sdk.md`.
 
 ## Payment Links (HTML)
 
-Payment links render a browser-friendly payment UI when a 402 endpoint is visited in a browser. Set `html: true` on the payment method config. Supports theming, multi-method compose (Tempo + Stripe tabs), and Solana wallets.
+Setting `html: true` on a payment method config renders a browser-friendly payment page when a 402 endpoint is visited in a browser, with theming, multi-method compose tabs, and Solana wallet support. Service workers handle credential submission, then the page reloads with the paid response.
 
-```typescript
-import { Mppx, tempo } from 'mppx/nextjs'
-
-const mppx = Mppx.create({
-  methods: [tempo.charge({
-    currency: '0x20c0...', recipient: '0x...',
-    html: true, // auto-renders payment page for browsers
-  })],
-})
-export const GET = mppx.charge({ amount: '0.1' })(() => Response.json({ data: '...' }))
-```
-
-Customize via `mppx/html` exports (`Config`, `Text`, `Theme`). Service workers handle credential submission - the page reloads with the paid response. For multi-method compose, tabs auto-switch between payment options.
+Customize via `mppx/html` exports (`Config`, `Text`, `Theme`). `Html.init(methodName)` returns the page context (`challenge`, `config`, `error`, `formattedAmount`, `label`, `root`, `submit`, `text`, `theme`, `vars`) for building a custom method's payment link.
 
 ## Zero-Dollar Auth (Proof Credentials)
 
 Authenticate agent identity without payment. Clients sign an EIP-712 proof over the challenge ID instead of creating a transaction - no gas burned, no funds transferred.
 
 ```typescript
-// Server - zero-dollar charge (amount: '0')
-const result = await mppx.charge({ amount: '0' })(request)
-
-// Enable replay protection (makes each proof single-use)
+// Server - zero-dollar charge, with a store for replay protection
 const mppx = Mppx.create({
-  methods: [tempo.charge({ currency: '0x20c0...', recipient: '0x...', store: Store.memory() })],
+  methods: [tempo.charge({ currency: '<PATHUSD_TESTNET>', recipient: '0x...', store })],
 })
+const result = await mppx.charge({ amount: '0' })(request)
 ```
 
-As of mppx 0.8.0, zero-amount proof credentials are **bound to the payer wallet**: the EIP-712 `Proof` typed-data now includes an `account` field and the domain version is bumped to `3` (canonical contract exposed as `tempo.Proof`). A proof signed for one account no longer verifies against another.
+As of mppx 0.8.0, zero-amount proof credentials are **bound to the payer wallet**: the EIP-712 `Proof` typed-data includes an `account` field and the domain version is `3` (exposed as `tempo.Proof`), so a proof signed for one account no longer verifies against another.
 
-Use cases: identity verification, long-running job polling (prove identity once, poll freely), paid unlock with free subsequent access, multi-step agent pipelines. See mpp.dev/advanced/identity for full patterns.
+Use cases: identity verification, long-running job polling, paid unlock with free subsequent access, multi-step agent pipelines. See [mpp.dev/advanced/identity](https://mpp.dev/advanced/identity).
 
 ## Payments Proxy
 
 Gate existing APIs behind MPP payments:
 
 ```typescript
-import { openai, anthropic, Proxy } from 'mppx/proxy'
+import { openai, Proxy } from 'mppx/proxy'
 import { Mppx, tempo } from 'mppx/server'
 
 const mppx = Mppx.create({ methods: [tempo()] })
 const proxy = Proxy.create({
   title: 'My API Gateway',
-  description: 'Paid access to AI APIs',
   services: [
     openai({
-      apiKey: 'sk-...', // pragma: allowlist secret
+      apiKey: process.env.OPENAI_API_KEY,
       routes: {
         'POST /v1/chat/completions': mppx.charge({ amount: '0.05' }),
-        'GET /v1/models': mppx.free(), // mppx.free() marks a route as free (no payment)
+        'GET /v1/models': true, // literal `true` marks a free route
       },
     }),
   ],
 })
-// Discovery: GET /openapi.json (x-payment-info document), plus live /discover, /discover/all, /llms.txt
 ```
 
-The proxy ships built-in service presets for `openai()`, `anthropic()`, and `stripe()` (all from `mppx/proxy`); each takes an `apiKey` and a `routes` map. See `references/typescript-sdk.md`.
+Built-in presets `openai()`, `anthropic()`, `stripe()`, plus `custom()` for any upstream. The proxy exposes `fetch` and `listener` handlers and serves `/discover`, `/discover/all`, `/llms.txt`, and `GET /openapi.json`. Non-proxy servers publish the same discovery document with the `discovery()` helper. See `references/discovery-and-proxy.md`.
 
 ## MCP Transport
 
 MCP tool calls can require payment using JSON-RPC error code `-32042` (servers may also issue `-32043`):
 
 ```typescript
-// Server - MCP with payment (import tempo from mppx/server, NOT mppx/tempo)
+// Server - import tempo from mppx/server, NOT mppx/tempo
 import { McpServer } from 'mppx/mcp/server'
 import { tempo } from 'mppx/server'
-const server = McpServer.wrap(baseServer, {
-  methods: [tempo.charge({ ... })],
-  secretKey: '...',
-})
+const server = McpServer.wrap(baseServer, { methods: [tempo.charge({ /* ... */ })], secretKey })
 
 // Client - payment-aware MCP client (import tempo from mppx/client)
 import { McpClient } from 'mppx/mcp/client'
@@ -354,127 +335,117 @@ const mcp = McpClient.wrap(client, { methods: [tempo({ account })] })
 const result = await mcp.callTool({ name: 'premium_tool', arguments: {} })
 ```
 
-The MCP subpaths moved to `mppx/mcp/server` and `mppx/mcp/client` in mppx 0.8.0; the old `mppx/mcp-sdk/*` specifiers remain as aliases. `McpClient.wrap` is now the single client-wrap API (the in-place `wrapClient` variant was collapsed into it). MCP-over-HTTP challenges settle in the same payment-aware fetch: `Transport.http()` extracts JSON-RPC `-32042` challenges and retries with the credential in MCP metadata.
-
-See `references/transports.md` for the full MCP encoding (challenge in error.data.challenges, credential in _meta).
+The MCP subpaths moved to `mppx/mcp/server` and `mppx/mcp/client` in mppx 0.8.0; `mppx/mcp-sdk/*` remain as aliases, and `McpClient.wrap` is the single client-wrap API. MCP-over-HTTP challenges settle in the same payment-aware fetch: `Transport.http()` extracts `-32042` challenges and retries with the credential in MCP metadata. Transports are pluggable via `Transport.from/http/mcp/mcpSdk` on both sides. See `references/transports.md`.
 
 ## Privy Server Wallets
 
-Use [Privy](https://docs.privy.io) server wallets as MPP signers for agentic payment flows. The pattern: create a custom viem `Account` via `toAccount()` that delegates `signMessage`, `signTransaction`, and `signTypedData` to Privy's API (`@privy-io/node`), then pass it to `tempo({ account })`. Tempo's custom serializer requires using `signSecp256k1` (raw hash signing) for transactions instead of Privy's higher-level `signTransaction`.
+Use [Privy](https://docs.privy.io) server wallets as MPP signers for agentic payment flows. `createViemAccount` from `@privy-io/node/viem` (requires `@privy-io/node` >= 0.20.0) returns a viem `Account` that delegates signing to the Privy wallet, so it drops into `tempo({ account })` wherever a local account would go:
 
-Install: `npm install @privy-io/node mppx viem`. See `references/typescript-sdk.md` for the full implementation, [Privy agentic wallets docs](https://docs.privy.io/recipes/agent-integrations/agentic-wallets), and the [demo app](https://github.com/privy-io/examples/tree/main/privy-next-mpp-agent-demo).
+```typescript
+import { createViemAccount } from '@privy-io/node/viem'
+import { Mppx, tempo } from 'mppx/client'
+
+const account = createViemAccount(privy, { walletId, address })
+const mppx = Mppx.create({ polyfill: false, methods: [tempo({ account })] })
+```
+
+Install: `npm install @privy-io/node mppx viem`. Server-side signing works with **app-owned server wallets**; user-owned embedded wallets require authorization keys or key quorums. See `references/typescript-sdk.md` for the manual `toAccount()` construction and the [Privy agentic wallets docs](https://docs.privy.io/recipes/agent-integrations/agentic-wallets).
 
 ## Testing & CLI
 
 ```bash
-# Create an account (stored in keychain, auto-funded on testnet)
+# Create an account (stored in keychain), then fund it on testnet
 npx mppx account create
+npx mppx account fund --network testnet
 
 # Make a paid request
 npx mppx http://localhost:3000/resource
 
-# Inspect challenge without paying
-npx mppx --inspect http://localhost:3000/resource
+# Parse a challenge without signing it
+npx mppx sign --dry-run --challenge '<www-authenticate value>'
+
+# Validate a server implementation end-to-end
+npx mppx validate http://localhost:3000
 ```
 
-**CLI config file**: Extend the CLI with custom payment methods via `mppx.config.(js|mjs|ts)`:
-```typescript
-// mppx.config.ts
-import { defineConfig } from 'mppx/cli'
-export default defineConfig({ plugins: [myCustomMethod()] })
-```
-As of mppx 0.8.1 the CLI no longer auto-discovers config from local directories - point it at the file explicitly (e.g. `--config ./mppx.config.ts`) or place it where the CLI is invoked and pass it in.
+The CLI also covers `init`, `sessions` (list/view/close), `discover`, `services`, `mcp add`, and `skills add`. Config comes from `MPPX_CONFIG` or an explicit `--config` - there is no auto-discovery from the working directory. Full reference: `references/cli.md`.
 
 ## SDK Packages
 
 | Language | Package | Install |
 |----------|---------|---------|
 | TypeScript | [`mppx`](https://github.com/wevm/mppx) | `npm install mppx` |
-| Python | [`pympp`](https://github.com/tempoxyz/pympp) | `pip install pympp` or `pip install "pympp[tempo]"` |
+| Python | [`pympp`](https://github.com/tempoxyz/pympp) | `pip install "pympp[tempo]"` |
 | Rust | [`mpp`](https://github.com/tempoxyz/mpp-rs) | `cargo add mpp --features tempo,client,server` |
 | Ruby | [`mpp-rb`](https://github.com/stripe/mpp-rb) (official, by Stripe) | see repo for gem name |
 | Go | [`mpp-go`](https://github.com/tempoxyz/mpp-go) (official, by Tempo) | `go get github.com/tempoxyz/mpp-go` |
-| Elixir | [`mpp`](https://github.com/ZenHive/mpp) (community) | `mix deps` / [hex.pm/packages/mpp](https://hex.pm/packages/mpp) |
+| Elixir | [`mpp`](https://github.com/ZenHive/mpp) (community) | [hex.pm/packages/mpp](https://hex.pm/packages/mpp) |
 | Swift | [`mpp-swift`](https://github.com/amitach/mpp-swift) (community) | see repo |
 
-Per the official SDK capability matrix: the **session** intent is TypeScript and Rust only. Charge, fee sponsorship, and Proof Credentials are in every official SDK. Stripe, MCP support, and event handling (payment hooks) are in TypeScript, Python, Rust, and Ruby - but **not** Go: the official `mpp-go` (net/http, Gin, Echo, Chi middleware) ships client/server/charge/fee-sponsorship/proof only, with no Stripe, MCP, or event handling. A separate community Go `mppx` (cp0x) also exists. Stellar uses `@stellar/mpp` ([repo](https://github.com/stellar/stellar-mpp-sdk)).
+Capability notes, checked against SDK source rather than the docs matrices (upstream publishes two that disagree):
 
-TypeScript subpath exports (mppx 0.8.1):
-- Server: `mppx/server` (generic), `mppx/hono`, `mppx/express`, `mppx/nextjs`, `mppx/elysia` (framework middleware)
-- Client: `mppx/client`
-- Proxy: `mppx/proxy`
+- **Session** intent: TypeScript and Rust only.
+- **Proof Credentials** (zero-dollar auth): TypeScript, Rust, and Ruby. **Not** pympp - the Python Tempo method implements only `hash` and `transaction` payload types.
+- **Stripe, MCP, and event handling**: TypeScript, Python, Rust, Ruby. Not the official `mpp-go`, which ships client/server/charge/fee-sponsorship/proof with net/http, Gin, Echo, and Chi middleware. A separate community Go `mppx` (cp0x) also exists.
+
+Go and Ruby have first-class SDK doc pages at [mpp.dev/sdk/go](https://mpp.dev/sdk/go) and [mpp.dev/sdk/ruby](https://mpp.dev/sdk/ruby).
+
+TypeScript subpath exports (mppx 0.8.15):
+
+- Server: `mppx/server` (generic), `mppx/hono`, `mppx/express`, `mppx/nextjs`, `mppx/elysia`
+- Client: `mppx/client`, `mppx/client/node` (Node SQLite session channel store)
+- Proxy and discovery: `mppx/proxy`, `mppx/discovery`
 - Built-in methods: `mppx/stripe` (+ `/client`, `/server`), `mppx/evm` (+ `/client`, `/server`)
 - x402 interop: `mppx/x402`
-- MCP: `mppx/mcp/server`, `mppx/mcp/client` (mppx 0.8.0+; the older `mppx/mcp-sdk/server` and `mppx/mcp-sdk/client` remain as aliases)
-- HTML: `mppx/html` (exports `Config`, `Text`, `Theme` types and `init()` for payment link customization)
-- Discovery: `mppx/discovery` (OpenAPI-first discovery tooling)
+- MCP: `mppx/mcp/server`, `mppx/mcp/client` (`mppx/mcp-sdk/*` retained as aliases)
+- HTML: `mppx/html`; Validation: `mppx/validation`
 - CLI: `mppx/cli`, `mppx/cli/plugins`
-- SSE utilities: `mppx/tempo` (exports `Session` with `Session.Sse.iterateData` for SSE stream parsing)
+- SSE utilities: `mppx/tempo` (exports `Session` with `Session.Sse.iterateData`)
 
-Always import `Mppx` and `tempo` from the appropriate subpath for your context (e.g. `mppx/hono` for Hono, `mppx/server` for generic/MCP server, `mppx/client` for client). Note: `Mppx` and `tempo` are NOT exported from `mppx/tempo` - that subpath only exports `Session`.
+Always import `Mppx` and `tempo` from the subpath matching your context. Note: `Mppx` and `tempo` are NOT exported from `mppx/tempo` - that subpath only exports `Session` and `Ws`.
 
 ## Key Concepts
 
 - **Challenge/Credential/Receipt**: The three protocol primitives. Challenge IDs are HMAC-SHA256 bound to prevent tampering. See `references/protocol-spec.md`
-- **Payment methods**: Tempo (stablecoins), Stripe (cards), Lightning (Bitcoin), Card (network tokens), or custom. See method-specific references
-- **Intents**: `charge` (one-time) and `session` (streaming). See `references/sessions.md` for session details
-- **Payment links**: Browser-rendered 402 payment pages with `html: true`. Supports theming and multi-method compose tabs
-- **Zero-dollar auth**: `proof` credential type for identity without payment. Amount `'0'` triggers EIP-712 proof signing. Add `store` for replay protection
-- **Split payments**: Distribute a charge across multiple recipients in a single transaction (Tempo charge, 0.4.12+)
-- **Subscriptions**: Recurring access on Tempo via an authorized key - activation collects the first period, later requests reuse the key (no per-request payment), the server renews in the background (needs a durable store), and access is cancelled/revoked server-side. `mppx.tempo.subscription` (+ `dev_second` test periods)
-- **Refunds**: MPP defines no refund protocol. For **charge**, refund out-of-protocol by sending funds back to the payer's address. For **session (v2)**, funds are reserved in the Tempo channel but not immediately claimed, so unclaimed reserved funds are **refunded by default** - the v2 settlement flow handles it without an explicit send-back. Legacy v1 sessions refund by closing the channel, returning unspent escrow to the client
-- **Transports**: HTTP (headers), MCP (JSON-RPC), and WebSocket (streaming). See `references/transports.md`
-- **Tempo gas model**: Tempo has **no native gas token** (no ETH equivalent). All transaction fees are paid in stablecoins (USDC, pathUSD) via the `feeToken` transaction field. Accounts must either set `feeToken` per-transaction or call `setUserToken` on the FeeManager precompile to set a default. Without this, transactions fail with `gas_limit: 0`. See `references/tempo-method.md`
-- **Fee sponsorship**: Server pays gas fees on behalf of clients (Tempo). See `references/tempo-method.md`
-- **Push/pull modes**: Client broadcasts tx (push) or server broadcasts (pull). See `references/tempo-method.md`
-- **Client chain pinning**: `tempo.charge({ expectedChainId })` rejects charge challenges whose `methodDetails.chainId` conflicts with the configured chain - stops a client from paying on the wrong Tempo network (mppx 0.7.0+)
-- **`tempo.common()`**: explicit alias for the Tempo charge + session method bundle (mppx 0.8.0) - equivalent to registering both `tempo.charge` and `tempo.session`
-- **Reusable client channels**: pass a `channelStore` to the Tempo session client to persist and reuse payer session channels across processes (mppx 0.8.0); the client-side `authorizedSigner` override was removed - voucher authority now derives from the selected account
-- **Payment hooks**: server/client lifecycle callbacks for logging, metrics, and tracing. See the Payment Hooks section below
-- **Agent spend controls**: Tempo access keys scope an agent's spend by token limit, contract/function, recipient, and expiry. See the Managing Agent Spend section below
+- **Zero-dollar auth**: `proof` credential type for identity without payment. Amount `'0'` triggers EIP-712 proof signing; add `store` for replay protection
+- **Split payments**: One charge across multiple recipients in a single transaction (1-10 splits, per-split memos, `expectedRecipients`). See `references/tempo-method.md`
+- **Refunds**: No refund protocol exists. **Charge** refunds out-of-protocol by sending funds back to the payer; **session v2** refunds unclaimed reserved funds by default; v1 refunds by closing the channel
+- **Credential lifecycle**: `mppx.validateCredential()` is a non-mutating pre-check; `mppx.broadcastCredential()` settles. `verifyCredential()` combines both and is deprecated
+- **Tempo gas model**: **No native gas token**. Fees are paid in stablecoins via `feeToken` or a `setUserToken` default; without one, transactions fail with `gas_limit: 0`. See `references/tempo-method.md`
+- **Fee sponsorship**: Server pays gas on behalf of clients, capped by `maxInFlightReservations` / `maxInFlightTotalFee`
+- **Relays**: Delegate credential validation and broadcast to Tempo API or a compatible relay via `tempo.charge({ relay })`
+- **Push/pull modes**: Client broadcasts the transaction (push) or the server does (pull)
+- **Client chain pinning**: `tempo.charge({ expectedChainId })` rejects challenges for the wrong Tempo network
+- **Reusable client channels**: pass a `channelStore` to persist and reuse payer session channels across processes
+- **x402 interop**: `evm.charge({ x402: { facilitator } })` serves native MPP and x402 "exact" challenges from one route; the client prefers Payment-auth challenges
 - **Custom methods**: Implement any payment rail with `Method.from()`. See `references/custom-methods.md`
 
 ## Payment Hooks
 
-Attach logging, metrics, tracing, or request-local context to the payment flow without touching the handler. Register hooks on the object returned by `Mppx.create()` - server hooks on `mppx/server`, client hooks on `mppx/client`. Each registration returns an unsubscribe function.
+Attach logging, metrics, or tracing without touching the handler. Register on the object returned by `Mppx.create()`; each registration returns an unsubscribe function.
 
-```typescript
-// Server hooks (mppx/server)
-const payment = Mppx.create({ methods: [tempo.charge(), tempo.session()] })
-payment.onChallengeCreated(({ challenge, method, request }) => { /* challenge.created */ })
-payment.onPaymentSuccess(({ method, receipt, request }) => { /* payment.success */ })
-payment.onPaymentFailed(({ error, method, submittedChallenge }) => { /* payment.failed */ })
-payment.on('*', ({ name, payload }) => { /* any event */ })
+- **Server** (`mppx/server`): `onChallengeCreated`, `onPaymentSuccess`, `onPaymentFailed`, `onSessionSettlement`, `on('*')`
+- **Client** (`mppx/client`): `onChallengeReceived`, `onCredentialCreated`, `onPaymentResponse`, `onPaymentFailed`
 
-// Client hooks (mppx/client)
-const mppx = Mppx.create({ methods: [tempo.charge({ account })], polyfill: false })
-mppx.onChallengeReceived(({ challenge }) => { /* runs before onChallenge; return a credential string to override */ })
-mppx.onCredentialCreated(({ challenge }) => {})
-mppx.onPaymentResponse(({ challenge, response }) => {})
-mppx.onPaymentFailed(({ challenge, error }) => {})
-```
-
-Server handlers are awaited inline and sequentially on the request path - keep them fast (slow handlers delay the response). All hooks except client `onChallengeReceived` are pure observers: thrown errors are swallowed and never change payment handling. Filter by intent with `method.intent` (server) or `challenge.intent` (client) - `'charge'`, `'session'`, or `'subscription'`. See [mpp.dev/advanced/payment-hooks](https://mpp.dev/advanced/payment-hooks).
+Server handlers are awaited inline and sequentially on the request path - keep them fast. All hooks except client `onChallengeReceived` (which may return a credential string to override) are pure observers whose thrown errors are swallowed. Filter by intent with `method.intent` or `challenge.intent`. `onPaymentFailed` is the practical way to see the real error behind an opaque 402. See `references/typescript-sdk.md` and [mpp.dev/advanced/payment-hooks](https://mpp.dev/advanced/payment-hooks).
 
 ## Managing Agent Spend
 
-Bound an agent's payment authority with **Tempo access keys** - delegated signing keys authorized by a wallet, with built-in spend controls. Set token spend limits, restrict to specific contracts/functions/recipients, and give each key its own expiry and revocation path. Spend management is per-rail; this is the Tempo mechanism.
+Bound an agent's payment authority with **Tempo access keys** - delegated signing keys with built-in spend controls, their own expiry, and a revocation path.
 
 ```typescript
 import { Expiry } from 'accounts'
-import { parseUnits } from 'viem'
+import { numberToHex, parseUnits } from 'viem'
 import { Scopes } from 'viem/tempo'
 
 const accessKey = {
   expiry: Expiry.days(7),
-  limits: [{ token: usdc, limit: parseUnits('10', 6), period: 86_400 }], // 10 USDC/day
+  limits: [{ token: usdc, limit: numberToHex(parseUnits('10', 6)), period: 86_400 }], // 10 USDC/day
   scopes: [Scopes.tip20(usdc).transfer({ recipients: [recipientAddress] })],
 }
 // Authorize via provider.request({ method: 'wallet_connect',
 //   params: [{ capabilities: { authorizeAccessKey: accessKey } }] })
-// (or wallet_authorizeAccessKey if the wallet is already connected)
 
-// Pin the key to this runtime's mppx client:
 Mppx.create({
   methods: [tempo({
     account: provider.getAccount(),
@@ -483,171 +454,46 @@ Mppx.create({
 })
 ```
 
-Separate keys for separate apps/tools/deployments keep delegated runtimes isolated, each with its own budget and scopes. `mppx` only pays when a challenge arrives, and the wallet signs with the pinned access key when it can satisfy the challenge. See [mpp.dev/guides/managing-agent-spend](https://mpp.dev/guides/managing-agent-spend) and [Tempo access keys](https://docs.tempo.xyz/guide/use-accounts/authorize-access-keys).
+Spend limits are **hex-encoded** - pass `numberToHex(parseUnits(...))`, not a raw bigint. Separate keys per app/tool/deployment keep delegated runtimes isolated. See [mpp.dev/guides/managing-agent-spend](https://mpp.dev/guides/managing-agent-spend) and [Tempo access keys](https://docs.tempo.xyz/guide/use-accounts/authorize-access-keys).
 
 ## Production Gotchas
 
-### Tempo Gas (CRITICAL)
+The failure modes that cost the most time. Full detail in `references/production-gotchas.md`:
 
-**Tempo has no native gas token.** Unlike Ethereum (ETH for gas) or Solana (SOL for fees), Tempo charges transaction fees in stablecoins. Every transaction must specify which stablecoin pays for gas. There are two ways:
-
-1. **Per-transaction `feeToken`** - set in the transaction itself:
-```typescript
-const prepared = await prepareTransactionRequest(client, {
-  account,
-  calls: [{ to, data }],
-  feeToken: '<USDC_TEMPO_MAINNET>', // USDC mainnet (see Tempo token addresses table)
-} as never)
-```
-
-2. **Account-level default via `setUserToken`** - one-time setup, applies to all future transactions:
-```typescript
-import { setUserToken } from 'viem/tempo'
-await client.fee.setUserTokenSync({
-  token: '<USDC_TEMPO_MAINNET>', // USDC mainnet
-})
-```
-
-**Without either, transactions fail silently with `gas_limit: 0`.** The mppx SDK handles this internally for payment transactions, but any direct on-chain calls (settle, close, custom contract interactions) must set `feeToken` explicitly or ensure `setUserToken` was called for the account.
-
-**"Fund with ETH/gas" errors are misleading on Tempo** - read them as "fund with the stablecoin fee token." The **server/recipient wallet itself** must hold the stablecoin fee token before it can broadcast `session.close()` or settle; otherwise the close silently fails and surfaces as a generic 402, leaving client deposits locked in escrow.
-
-**Fee token addresses:** see the [Tempo token addresses](#tempo-token-addresses) table above (`<USDC_TEMPO_MAINNET>`, `<PATHUSD_TESTNET>`).
-
-### Setup
-
-**Self-payment trap**: The payer and recipient cannot be the same wallet address. When testing with `npx mppx`, create a separate client account (`npx mppx account create -a client`) and fund it separately.
-
-**Recipient wallet initialization**: TIP-20 token accounts on Tempo must be initialized before they can receive tokens (similar to Solana ATAs). Send a tiny amount (e.g. 0.01 USDC) to the recipient address first: `tempo wallet transfer 0.01 <USDC_TEMPO_MAINNET> <recipient>`.
-
-### Server
-
-**Set `realm` explicitly for mppscan attribution.** The `realm` value is hashed into Tempo's attribution memo (bytes 5-14 of the 32-byte `transferWithMemo` data) and is how mppscan correlates on-chain transactions to registered servers. `Mppx.create()` auto-detects `realm` from env vars (`MPP_REALM`, `FLY_APP_NAME`, `HEROKU_APP_NAME`, `HOST`, `HOSTNAME`, `RAILWAY_PUBLIC_DOMAIN`, `RENDER_EXTERNAL_HOSTNAME`, `VERCEL_URL`, `WEBSITE_HOSTNAME`). On PaaS platforms (Vercel, Railway, Heroku) these are stable app names and work fine. **In Kubernetes, `HOSTNAME` is the pod name** (e.g. `web-69d986c8d8-6dtdx`) which rotates on every deploy - causing a new server fingerprint each time, so mppscan can't track your transactions. Fix by setting `MPP_REALM` env var to your stable public domain or passing `realm` directly:
-```typescript
-Mppx.create({
-  methods: [tempo({ ... })],
-  realm: 'web.surf.cascade.fyi', // or process.env.MPP_REALM
-  secretKey,
-})
-```
-
-**`tempo()` vs explicit registration**: `tempo({ ... })` registers both `charge` and `session` intents with shared config. When you need different config per intent (e.g. session needs `store` and `sse: { poll: true }` but charge doesn't), register them explicitly:
-```typescript
-import { Mppx, Store, tempo } from 'mppx/server'
-Mppx.create({
-  methods: [
-    tempo.charge({ currency, recipient }),
-    tempo.session({ currency, recipient, store: Store.memory(), sse: { poll: true } }),
-  ],
-  secretKey,
-})
-```
-
-**Hono multiple headers**: `c.header(name, value)` replaces by default. When emitting multiple `WWW-Authenticate` values (e.g. charge + session intents), the second call silently overwrites the first. Prefer using `mppx.compose()` which handles multi-header emission correctly. If composing manually, use `{ append: true }`:
-```typescript
-c.header('WWW-Authenticate', chargeWwwAuth)
-c.header('WWW-Authenticate', sessionWwwAuth, { append: true })
-```
-
-**CORS headers**: `WWW-Authenticate` and `Payment-Receipt` must be listed in `access-control-expose-headers` or browsers/clients won't see them.
-
-**Rotate `MPP_SECRET_KEY` with overlap**: challenge IDs are HMAC-bound to the secret, so a hard swap invalidates every in-flight challenge. Staged rollout: start issuing new challenges with the new key, keep verifying the previous key during a short overlap window, then drop the old key after outstanding challenges have expired (their TTL). If your deployment can't verify current-and-previous keys, do a coordinated cutover and wait out the old challenge TTL before invalidating.
-
-**SSE utilities import path**: `Session.Sse.iterateData` is exported from `mppx/tempo`, NOT `mppx/server`:
-```typescript
-import { Mppx, Store, tempo } from 'mppx/server'
-import { Session } from 'mppx/tempo'
-const iterateSseData = Session.Sse.iterateData
-```
-
-### Stores
-
-**Never use `Store.memory()` in production.** It loses all channel state on server restart/redeploy. When state is lost, the server can't close channels or settle funds - client deposits stay locked in escrow indefinitely. Use a persistent store.
-
-Built-in store adapters (all handle BigInt serialization via `ox`'s `Json` module):
-```typescript
-import { Store } from 'mppx/server'
-
-Store.memory()              // development only
-Store.redis(redisClient)    // ioredis, node-redis, Valkey (added in 0.4.9)
-Store.upstash(upstashClient) // Upstash Redis / Vercel KV
-Store.cloudflare(kvNamespace) // Cloudflare KV
-Store.from({ get, put, delete }) // custom adapter
-```
-
-**AtomicStore** (0.5.7+): Extends `Store` with an `update(key, fn)` method for safe concurrent read-modify-write. Used internally for replay protection and channel state. All built-in adapters (redis, upstash, cloudflare) support atomic updates. Custom adapters via `Store.from()` get an optimistic-retry implementation automatically.
-
-**Polling mode**: If your store doesn't implement the optional `waitForUpdate()` method (e.g. custom adapters via `Store.from()`), pass `sse: { poll: true }` to `tempo.session()`. Otherwise SSE streams will hang waiting for event-driven wakeups that never come.
-
-### Channel Recovery After Restarts
-
-Pass `channelId` to `mppx.session()` so returning clients recover existing on-chain channels instead of opening new ones (which locks more funds in escrow). See `references/sessions.md` for the full pattern with `Credential.fromRequest()` and `tryRecoverChannel()`.
-
-### Request Handling
-
-**Session voucher POSTs have no body.** Mid-stream voucher POSTs carry only `Authorization: Payment` - no JSON body. If your middleware decides charge vs session based on `body.stream`, vouchers will hit the charge path. Check the **credential's intent** instead. As of mppx 0.4.9, the SDK skips route amount/currency/recipient validation for topUp and voucher credentials (the on-chain voucher signature is the real validation), so body-derived pricing mismatches no longer cause spurious 402 rejections.
-
-**`close`/`topUp` management credentials are also bodyless.** They arrive as POSTs with only `Authorization: Payment`. If you run your *own* request-body validation (e.g. a Zod schema on the tool payload) *before* handing the request to `mppx.session()`, it will reject these with a spurious **400** before mppx can answer them (mppx replies `204 No Content`). Exempt session-management credentials from your body validator - gate on the credential's intent/action, not on body presence.
-
-**Clone the request before reading the body.** `request.json()` consumes the Request body. If you parse the body first and then pass the original request to `mppx.session()` or `mppx.charge()`, the mppx handler gets an empty body and returns 402. Clone before reading.
-
-### Pricing & Streaming
-
-**Cheap model zero-charge floor**: Tempo USDC has 6-decimal precision. For very cheap models, per-token cost like `(0.10 / 1_000_000) * 1.3 = 0.00000013` rounds to `"0.000000"` via `toFixed(6)` - effectively zero. Add a minimum tick cost floor:
-```typescript
-const MIN_TICK_COST = 0.000001 // smallest Tempo USDC unit (6 decimals)
-const tickCost = Math.max((outputRate / 1_000_000) * margin, MIN_TICK_COST)
-```
-
-**SSE chunks != tokens**: Per-SSE-event `stream.charge()` is an acceptable approximation. `stream.charge()` is serial (Redis GET + SET per call, per-channelId mutex) - no bulk API exists yet.
-
-**Add upstream timeouts**: Always use `AbortSignal.timeout()` on upstream fetches. A stalled upstream holds the payment channel open, locking client funds.
-
-### Infrastructure
-
-**Nginx proxy buffer overflow**: Large 402 headers can exceed nginx's default 4k `proxy_buffer_size`, causing **502 Bad Gateway**. Fix: `nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"`. Debug: port-forward directly to the pod - if you get 402, the issue is in the ingress layer.
-
-**Reverse-proxy scheme mismatch**: Behind a TLS-terminating proxy (Caddy/nginx/CDN), the request the server sees can be `http://` while the public origin is `https://`. If the challenge binds the resource URL, the signed payment then fails re-verification - a double-402 loop. Trust the forwarded-proto header or configure the public resource URL explicitly.
-
-### Client / Tempo CLI
-
-**CLI defaults to mainnet** (0.5.4+): The `mppx` CLI now defaults to Tempo mainnet when `--rpc-url` is omitted. Previously it defaulted to testnet. Use `--rpc-url` or set `MPPX_RPC_URL`/`RPC_URL` env vars for testnet.
-
-**Stale sessions after redeploy**: When the server redeploys and loses in-memory session state, clients get `"Session invalidation claim for channel 0x... was not confirmed on-chain"`. Fix: `tempo wallet sessions close` or `tempo wallet sessions sync`. Dispute window is 4-15 min.
-
-### Client SDK Versioning (advisory)
-
-These are field reports, not documented guarantees - verify against your own versions.
-
-**Pin mppx and viem together.** Bumping `viem` independently of `mppx` has crashed the Tempo charge path with `TypeError: Cannot destructure property 'from' of 'parameters'` - a call-signature (arity) mismatch between the mppx build and a newer viem. Treat mppx + viem as a coupled pair and upgrade them together rather than bumping viem alone.
-
-**A fast non-402 response is not a payment failure.** `mppx.fetch` sends an initial probe; if the response is not a 402 (e.g. an upstream 500) it returns it as-is immediately (hundreds of ms). Opening a real session channel takes seconds (on-chain tx + voucher signing), so a quick failure means the upstream errored *before* any payment - disambiguate on latency plus status, and don't retry as if payment failed.
+- **Tempo has no native gas token.** Set `feeToken` or call `setUserToken`, or transactions fail with `gas_limit: 0`. "Fund with ETH" errors mean "fund with the stablecoin fee token"
+- **Sessions do not settle themselves.** Configure `settlementSchedule` or run your own `tempo.settle()` sweep, paired with a close policy for idle channels
+- **Charge settles before your handler runs.** Use `validateCredential` then `broadcastCredential` when payment should depend on the work succeeding. Challenges expire after 5 minutes by default
+- **Never use `Store.memory()` in production.** Lost channel state means deposits stay reserved indefinitely
+- **Set `realm` explicitly.** Env vars outrank the per-request hostname, and Kubernetes `HOSTNAME` rotates every deploy, breaking mppscan attribution
+- **Session voucher, `close`, and `topUp` credentials are bodyless POSTs**, so a body validator running before `mppx.session()` rejects them with a spurious 400. Clone the request before reading its body, or mppx sees an empty one and returns 402
+- **Large 402 headers overflow nginx's 4k default buffer** and surface as 502
 
 ## References
 
 | File | Content |
 |------|---------|
 | `references/protocol-spec.md` | Core protocol: Challenge/Credential/Receipt structure, status codes, error handling, security, caching, extensibility |
-| `references/typescript-sdk.md` | mppx TypeScript SDK: server/client/middleware, proxy, MCP SDK, CLI, AtomicStore, Privy wallets |
-| `references/tempo-method.md` | Tempo: charge + session, fee sponsorship, push/pull, auto-swap, split payments, config |
-| `references/stripe-method.md` | Stripe payment method: fiat SPT flow (`@stripe/link-cli`), on-chain crypto deposit method, server/client config, Stripe Elements, metadata |
-| `references/sessions.md` | Sessions: payment channels, vouchers, SSE/WebSocket streaming, escrow, channel recovery |
+| `references/typescript-sdk.md` | mppx TypeScript SDK: server/client/middleware, transports, stores, validation, Privy wallets |
+| `references/cli.md` | mppx CLI: requests, `validate`, sign, accounts, sessions, discovery, config, env vars |
+| `references/production-gotchas.md` | Field-tested failure modes: gas, settlement, stores, realm, request handling, infrastructure |
+| `references/sessions.md` | Sessions: payment channels, vouchers, settlement, SSE/WebSocket streaming, recovery |
+| `references/subscriptions.md` | Subscription intent: activation, renewal worker, cancellation, period units |
+| `references/tempo-method.md` | Tempo: charge + session, fee sponsorship, relays, push/pull, auto-swap, split payments |
+| `references/stripe-method.md` | Stripe: fiat SPT flow, on-chain crypto deposit, server/client config, Elements, metadata |
+| `references/discovery-and-proxy.md` | Payments proxy, custom services, discovery documents, registries |
 | `references/transports.md` | HTTP, MCP, and WebSocket transport bindings: header/message encoding, comparison |
-| `references/python-sdk.md` | pympp Python SDK: `@server.pay` decorator, async client, charge intent (no sessions in Python) |
-| `references/rust-sdk.md` | mpp Rust SDK: server/client, feature flags, reqwest middleware |
-| `references/lightning-method.md` | Lightning payment method: charge (BOLT11), session (bearer tokens), Spark SDK |
-| `references/custom-methods.md` | Custom payment methods: Method.from, Method.toClient, Method.toServer patterns |
+| `references/python-sdk.md` | pympp Python SDK: `@server.pay` decorator, async client, charge intent |
+| `references/rust-sdk.md` | mpp Rust SDK: server/client, feature flags, sessions, reqwest middleware |
+| `references/lightning-method.md` | Lightning: charge (BOLT11), session (bearer tokens), Spark SDK |
+| `references/custom-methods.md` | Custom payment methods: `Method.from`, `toClient`, `toServer` patterns |
 
 ## Official Resources
 
-- Website: https://mpp.dev
-- GitHub: https://github.com/wevm/mppx (TypeScript SDK); docs + spec monorepo at https://github.com/tempoxyz/mpp
-- Protocol spec: https://paymentauth.org
+- Website: [mpp.dev](https://mpp.dev) - LLM docs: [llms-full.txt](https://mpp.dev/llms-full.txt) - Spec: [paymentauth.org](https://paymentauth.org)
+- GitHub: [wevm/mppx](https://github.com/wevm/mppx) (TypeScript SDK), [tempoxyz/mpp](https://github.com/tempoxyz/mpp) (docs), [tempoxyz/mpp-specs](https://github.com/tempoxyz/mpp-specs) (spec)
 - IETF draft: [draft-ryan-httpauth-payment-01](https://datatracker.ietf.org/doc/draft-ryan-httpauth-payment/) (Standards Track; expires 2026-09-19)
-- Stripe docs: https://docs.stripe.com/payments/machine/mpp
-- Tempo docs: https://docs.tempo.xyz
-- Privy MPP guide: https://docs.privy.io (search "MPP" or see agentic wallets recipes)
-- x402 interop/migration: the `mppx/x402` subpath runs x402 "exact" flows alongside MPP on one endpoint - https://mpp.dev/guides/upgrade-x402
-- Docs MCP server (for agents building on MPP): `claude mcp add --transport http mpp https://mpp.dev/api/mcp` (tools `list_pages`/`read_page`/`search_docs`/`search_source`); install this skill's upstream via `npx skills add tempoxyz/mpp -g`
-- Services MCP (agent-facing discovery of the curated directory): https://mpp.dev/mcp/services
-- LLM docs: https://mpp.dev/llms-full.txt
+- [Stripe MPP docs](https://docs.stripe.com/payments/machine/mpp) - [Tempo docs](https://docs.tempo.xyz) - [x402 interop](https://mpp.dev/guides/use-mpp-with-x402) - [mpp vs x402](https://mpp.dev/mpp-vs-x402) - [governance](https://mpp.dev/governance)
+- Agent wallets: [mpp.dev/tools/wallet](https://mpp.dev/tools/wallet) covers Tempo Wallet, Privy Agent CLI, AgentCash, Link CLI, Kite Passport, and the mppx CLI
+- Partner integrations: [Cloudflare Agents](https://mpp.dev/partner-integrations/cloudflare-agents), [Vercel AI SDK](https://mpp.dev/partner-integrations/vercel-ai-sdk), [MCP SDK](https://mpp.dev/partner-integrations/mcp-sdk), [OpenClaw](https://mpp.dev/partner-integrations/openclaw); community [extensions](https://mpp.dev/extensions)
+- Docs MCP: `claude mcp add --transport http mpp https://mpp.dev/api/mcp` (8 tools: `list_pages`, `read_page`, `search_docs`, `search_source`, `list_sources`, `list_source_files`, `read_source_file`, `get_file_tree`). Services MCP: [mpp.dev/mcp/services](https://mpp.dev/mcp/services)
+- Upstream publishes its own machine-readable skill at `mpp.dev/.well-known/agent-skills/mppx/SKILL.md`; install via `npx skills add tempoxyz/mpp -g` or `mppx skills add`
