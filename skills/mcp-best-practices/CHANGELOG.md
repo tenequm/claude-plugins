@@ -45,6 +45,7 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Known SDK Bugs table: #1699 was fixed on the v2 line only (no v1 backport), #893 is open on both `main` and `v1.x` (with the dummy-registration workaround), #1596 gains the v2 `fromJsonSchema()` answer, and #702 is reframed as a permanent JSON Schema limitation rather than an open bug.
 - Union-schema breakage confirmed still present on v1.30.0 (backport PR #2017 remains open).
 - Stale "v2 pre-alpha" / "v2 alpha" / "2.0.0-beta.3" headings and the "npm `latest` resolves to a prerelease" note across references.
+- Rewrote the frontmatter `description` to the capabilities/triggers/boundary structure: replaced the trailing subject-area keyword dump with natural prose (semantic matching makes the list redundant), dropped the version pins (no trigger value, and `metadata.upstream` already carries them), and added a boundary distinguishing this decision reference from server-scaffolding skills.
 
 Verified against: @modelcontextprotocol/sdk@1.30.0, @modelcontextprotocol/server@2.0.0, @modelcontextprotocol/ext-apps@1.7.5, modelcontextprotocol-spec@2026-07-28
 
