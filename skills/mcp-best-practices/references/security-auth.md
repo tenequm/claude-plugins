@@ -283,7 +283,7 @@ return Response.json({
 
 The general principle this case establishes: **absorb client bugs server-side whenever you can, so clients and users work unchanged.** A client-side workaround (downgrade, manual config) is a last-resort mention, never your shipped fix.
 
-### v2 SDK Auth Helpers (2.0.0-beta.3)
+### v2 SDK Auth Helpers (2.0.0)
 
 `@modelcontextprotocol/server` ships runtime-neutral helpers for web-standard `fetch(request)` hosts (Cloudflare Workers, Deno, Bun, Hono): `requireBearerAuth` gates requests via an `OAuthTokenVerifier`, and `oauthMetadataResponse` serves the RFC 9728 Protected Resource Metadata and RFC 8414 Authorization Server metadata documents ([PR #2420](https://github.com/modelcontextprotocol/typescript-sdk/pull/2420), [PR #2422](https://github.com/modelcontextprotocol/typescript-sdk/pull/2422)). The insecure-issuer escape hatch is an explicit `dangerouslyAllowInsecureIssuerUrl` option, no longer an env read.
 
@@ -322,6 +322,25 @@ Servers decide what scopes to include:
 - Silent scope semantic changes without versioning
 - Treating claimed scopes as sufficient without server-side authorization logic
 
-### 2026-07-28 RC Auth Hardening
+### 2026-07-28 Auth Changes (released)
 
-The upcoming revision adds four auth SEPs: clients declare their OIDC `application_type` during Dynamic Client Registration (SEP-837); OIDC-flavored refresh-token guidance (SEP-2207); **scope accumulation during step-up** is specified (SEP-2350 - directly affects the progressive scope model above); and the `.well-known` discovery-suffix behavior is clarified (SEP-2351). See the [RC announcement](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/).
+The released revision changes four things that affect server authors:
+
+- **Dynamic Client Registration is deprecated** in favor of [Client ID Metadata Documents (CIMD)](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration#client-id-metadata-documents) ([PR #2858](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2858)). DCR remains available for authorization servers that don't support CIMD, so this is a direction signal rather than a breaking change.
+- **`iss` validation is normative**: authorization servers **SHOULD** include `iss` per RFC 9207, and clients **MUST** validate a present `iss` against the recorded issuer before redeeming the code ([SEP-2468](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2468)). This is the same mechanism as the interop footgun above - the workaround there (send `iss`, advertise the metadata flag as `false`) stays valid, because a client that validates a *present* `iss` is satisfied either way.
+- **Credentials are bound to their issuer**: clients **MUST** key persisted credentials by issuer identifier, **MUST NOT** reuse them against a different authorization server, and **MUST** re-register when it changes ([SEP-2352](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2352)).
+- **Clients declare an OIDC `application_type`** during DCR to avoid redirect-URI conflicts ([SEP-837](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/837)).
+
+On scope accumulation, the released text is prose rather than a mechanism: *"Scope accumulation across operations is a client-side responsibility."* Your server still decides what to put in each `WWW-Authenticate` challenge - see the progressive scope model above - but it cannot assume the client unions scopes for it.
+
+See the [release announcement](https://blog.modelcontextprotocol.io/posts/2026-07-28/) and the [authorization spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
+
+## Client Reality (field-observed)
+
+The spec describes what clients ought to do. These are behaviors observed in shipping clients that will break a spec-correct server if you don't absorb them.
+
+- **Point `resource_metadata` at the path-specific document.** A `WWW-Authenticate: Bearer resource_metadata="..."` header that points at the site root yields a `resource` mismatch and a "requested resource invalid" failure: the client *"follows the header -> gets the root metadata -> ... doesn't match ... -> 'requested resource invalid'. The well-known fix was irrelevant because [the client] never falls back to the path-aware URL."* Clients follow the header you give them and do not fall back.
+- **Serve wildcard `.well-known` handlers.** Clients build discovery URLs by inserting the **resource** path, not the issuer path - so register `/.well-known/oauth-authorization-server/*` and `/.well-known/oauth-protected-resource/*` wildcards rather than one fixed route under your auth-server path.
+- **Keep an opaque-token/introspection fallback.** Not every client sends the RFC 8707 `resource` parameter - some send it in neither the authorize request nor registration. A server that *requires* resource-bound tokens locks those clients out. Honor `resource` when present; don't mandate it.
+- **Audience misconfiguration degrades silently.** When the audience the client binds to isn't in the provider's accepted-audience set, OAuth fails at *token issuance*, and the symptom is not an auth error - it is silent degradation to the unauthenticated path, so your server just sees anonymous traffic. Verify the exact MCP endpoint URL is in the provider's `validAudiences`.
+- **A stale refresh token can be a hard dead-end.** Some clients exit the handshake on `400 invalid_grant` at refresh with no automatic re-registration. Keep signing secrets stable across deploys and avoid deleting registered clients, or you strand existing sessions.

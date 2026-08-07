@@ -7,6 +7,48 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-07
+
+### Added
+- New `references/spec-2026-07-28.md` covering the released revision in full: per-request `_meta` identity keys (`protocolVersion`, `clientCapabilities`, `clientInfo`, `serverInfo`), per-request `io.modelcontextprotocol/logLevel`, the `subscriptions/listen` notification filter (`toolsListChanged`/`promptsListChanged`/`resourcesListChanged`/`resourceSubscriptions`) plus `subscriptionId` tagging, `requestState`, `Mcp-Method`/`Mcp-Name` with the Base64 sentinel encoding format, `DiscoverResult`, the cacheable-result set, the error-code allocation policy, and the deprecation table.
+- "The Two Eras" section in SKILL.md: SDK v2 speaks the 2025-era wire by default and 2026-07-28 is opt-in via `versionNegotiation` (`legacy` / `auto` / `{pin}`) - upgrading the SDK does not change your protocol revision.
+- Spec "Stateful Tools" design rules (authorization, opacity, lifetime in the creation tool's description, expiry errors), replacing a single-sentence mention.
+- SSE keep-alive frames and the `keepAliveMs` option (default 15000, `0` disables), shipped in v1.30.0 and v2.
+- v2-migration: "Beta.3 -> 2.0.0" section - the beta.5 wire realignment (`serverInfo` moves to result `_meta`, `clientInfo` optional, `SERVER_INFO_META_KEY`), schema consolidation into `core`, string-valued response cache (breaking for custom `ResponseCacheStore`), `preloadSchemas()`, lazy Ajv/wire schemas, auth-probe fix, draft-07/2019-09 dialect acceptance, `ConnectOptions.prior`, restored `Protocol` export.
+- tool-schema-guide: v2 Zod guardrails (hard error on Zod 3, warning below 4.2.0, `fromJsonSchema()`); proxy/aggregator rule to strip `outputSchema` when re-listing upstream tools; middleware must spread the whole result rather than reconstruct it; per-tool cap mechanics (wire-level field, 500k clamp, text-only, bytes not code points); paging-over-truncation guidance; response-shape economy; duplicate-SDK-install diagnosis.
+- security-auth: "Client Reality" section - path-specific `resource_metadata`, wildcard `.well-known` handlers, clients that omit the RFC 8707 `resource` parameter, silent degradation on audience misconfiguration, stale-refresh-token dead-ends.
+- transport-patterns: transport-level rejections bypass application logging; exclude GET from request-rate metrics (SSE keep-alive dominates by ~2 orders of magnitude); 415 on non-JSON POSTs.
+- Conformance suite as a runnable CLI (`npx @modelcontextprotocol/conformance server --url ...`), the SDK tier roster, and the `ext-tasks` repo as the canonical Tasks home.
+- "Testing Against Each Era": the MCP Inspector is now three clients behind one binary (web / `--cli` / `--tui`) and **connects as `legacy` by default**, so a 2026-07-28 server tested without setting `protocolEra` shows an `initialize` handshake and looks broken when it isn't. Covers the `legacy`/`auto`/`modern` setting, why the default is deliberate, and the repo's composable test servers.
+- "Direction: Active Working Groups": charter-level (no wire contract) summary of File Uploads (SEP-2356), Interceptors, Triggers/Events, Agents, Skills Over MCP (SEP-2640), and Server Card, each with why it matters to a server author.
+- Pointer to the official `mcp-server-dev` plugin (`build-mcp-server` / `build-mcp-app` / `build-mcpb`) for scaffolding a server, as the complement to this decision reference.
+
+### Changed
+- **Breaking:** spec `2026-07-28` is released, not a locked Release Candidate; the SKILL.md section is re-tensed and re-scoped, with detail delegated to the new reference.
+- **Breaking:** TypeScript SDK v2 is stable (`2.0.0`, nine packages cut in lockstep 2026-07-27); v1 is the legacy line at `1.30.0`, developed on the `v1.x` branch with bug and security fixes for at least 6 months.
+- Extension negotiation moved from `initialize` to per-request `_meta["io.modelcontextprotocol/clientCapabilities"]`; the initialize-based JSON example is now labeled 2025-era.
+- `transport-patterns.md` re-framed around the two eras - sessions, the GET stream, DELETE termination, and SSE resumability are scoped to the 2025-era wire.
+- `server/discover` is MUST-implement for servers, MAY-call for clients.
+- `-32000..-32019` is **legacy** (new implementations SHOULD NOT use it), not merely implementation-defined.
+- Keep-alive is "encouraged", not SHOULD; Server Card path corrected to `GET <streamable-http-url>/server-card` with the catalog at `.well-known/mcp/catalog.json` (SEP-2127 still Draft).
+- Elicitation/sampling reframed: on 2026-07-28 servers cannot send requests to clients, so both go through MRTR.
+
+### Removed
+- **Breaking:** `execution.taskSupport` - absent from the 2026-07-28 schema; the field is now scoped to 2025-11-25 only.
+- The SEP-2260 bullet ("server-initiated requests only while processing a client request") - it never landed in the released spec, and MRTR made it moot.
+- SEP-2350 and SEP-2351 citations - no such SEPs exist. SEP-2207 dropped from the 2026-07-28 additions list (Final, but not part of that revision).
+
+### Fixed
+- **`-32042` payment-code collision.** The released spec allocates `-32042` ("URL elicitation required", 2025-11-25 only) inside the spec-reserved `-32020..-32099` sub-range, where implementations MUST NOT emit undefined codes. Payment guidance no longer recommends `-32042`/`-32043`; it leads with the `isError` pattern and directs new codes outside `-32768..-32000`.
+- Origin validation scoped to a **present and invalid** header - a blanket 403 on a missing `Origin` locks out shipping clients.
+- `MCP-Protocol-Version` guidance corrected: there is no initialization on 2026-07-28 and the version rides `_meta`; accept a range of declared versions.
+- Known SDK Bugs table: #1699 was fixed on the v2 line only (no v1 backport), #893 is open on both `main` and `v1.x` (with the dummy-registration workaround), #1596 gains the v2 `fromJsonSchema()` answer, and #702 is reframed as a permanent JSON Schema limitation rather than an open bug.
+- Union-schema breakage confirmed still present on v1.30.0 (backport PR #2017 remains open).
+- Stale "v2 pre-alpha" / "v2 alpha" / "2.0.0-beta.3" headings and the "npm `latest` resolves to a prerelease" note across references.
+- Rewrote the frontmatter `description` to the capabilities/triggers/boundary structure: replaced the trailing subject-area keyword dump with natural prose (semantic matching makes the list redundant), dropped the version pins (no trigger value, and `metadata.upstream` already carries them), and added a boundary distinguishing this decision reference from server-scaffolding skills.
+
+Verified against: @modelcontextprotocol/sdk@1.30.0, @modelcontextprotocol/server@2.0.0, @modelcontextprotocol/ext-apps@1.7.5, modelcontextprotocol-spec@2026-07-28
+
 ## [0.8.2] - 2026-07-24
 
 ### Added

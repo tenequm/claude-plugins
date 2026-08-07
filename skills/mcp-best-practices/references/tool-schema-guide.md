@@ -20,11 +20,20 @@ The SDK's `normalizeObjectSchema()` gates Zod schemas through `toJsonSchemaCompa
 
 Key constraint: The MCP protocol requires `Tool.inputSchema` to have `type: "object"` at the top level. Any Zod type that doesn't produce this is silently dropped or produces an empty schema.
 
-### v2 Path (pre-alpha)
+### v2 Path (current, 2.0.0)
 
 v2 uses Standard Schema interfaces (`StandardSchemaWithJSON`). The conversion delegates to the schema library's native `toJSONSchema()`. Zod v4's native `z.toJSONSchema()` produces correct JSON Schema 2020-12 output.
 
-However, the `type: "object"` top-level requirement in the MCP protocol still applies. A `z.discriminatedUnion()` produces `{ oneOf: [...] }` without `type: "object"`, so clients that validate may reject it.
+The `type: "object"` top-level requirement still applies, but v2's converter handles the union case rather than silently emptying it: Zod's discriminated unions "emit `{oneOf: [...]}` without a top-level `type`, so for `io: 'input'` this function defaults `type` to `\"object\"` when absent and throws on an explicit non-object `type`". A `z.string()` at the top level is a hard error, not a silent empty schema.
+
+**Zod version guardrails in v2** - both surface at registration, not at call time:
+
+- A Zod 3 schema is a hard error: *"Schema appears to be from zod 3, which the SDK cannot convert to JSON Schema. Upgrade to zod >=4.2.0, or wrap your JSON Schema with fromJsonSchema()."*
+- Below zod 4.2.0 you get a warning and a slower path: *"[mcp-sdk] Your zod version does not implement `~standard.jsonSchema` (added in zod 4.2.0). Falling back to z.toJSONSchema()."*
+
+**Raw JSON Schema in v2**: use the exported `fromJsonSchema()` wrapper - `fromJsonSchema<T>(schema, validator?): StandardSchemaWithJSON<T, T>`. This is v2's answer to the v1 registration throw (#1596), and it is how you use TypeBox or a hand-written schema.
+
+Since 2.0.0 the default validator also honors **declared draft-07 and 2019-09 dialects**, so `zod-to-json-schema` output (stamped draft-07 by default) validates instead of being rejected. Schemas with no `$schema` are still treated as 2020-12.
 
 ## What Works
 
@@ -96,7 +105,7 @@ z.object({
 
 **Severity**: High. The schema silently becomes `{ type: "object", properties: {} }` - the tool accepts any input.
 
-**Fix status**: Resolved in the v2 line ([PR #1796](https://github.com/modelcontextprotocol/typescript-sdk/pull/1796), merged 2026-03-30). The v1.x backport ([PR #2017](https://github.com/modelcontextprotocol/typescript-sdk/pull/2017)) is still open, so the bug is present on every released v1 version - the flat-object workaround below remains required on v1.
+**Fix status**: Resolved in the v2 line ([PR #1796](https://github.com/modelcontextprotocol/typescript-sdk/pull/1796), merged 2026-03-30). The v1.x backport ([PR #2017](https://github.com/modelcontextprotocol/typescript-sdk/pull/2017)) is **still open**, so the bug is present on every released v1 - **including v1.30.0**, which still routes tool schemas through `normalizeObjectSchema()`. The flat-object workaround below remains required on v1; migrating to v2 is the real fix.
 
 ```typescript
 // BROKEN: Produces empty schema in v1
@@ -137,11 +146,15 @@ server.tool("my-tool", "desc", {
   properties: { query: { type: "string" } },
 }, handler);
 
-// FIX: Use Zod
+// FIX (v1): Use Zod
 server.tool("my-tool", "desc", {
   query: z.string().describe("Search query"),
 }, handler);
 ```
+
+**On v2**, raw JSON Schema is supported again via the `fromJsonSchema()` wrapper - see "v2 Path" above.
+
+A related v1 trap that does *not* throw: passing raw JSON Schema `properties` to `McpServer.tool()` on an older v1 makes **every argument arrive as `undefined`** at the handler rather than erroring - the SDK tries to validate incoming args against the raw JSON objects, fails, and hands you nothing. For pass-through proxies that must forward schemas verbatim, use the lower-level `Server` class with raw request handlers instead of `McpServer`.
 
 ### z.passthrough() - Allows Arbitrary Properties
 
@@ -161,7 +174,15 @@ z.object({ query: z.string() })
 
 Earlier v1 releases (≤ v1.22.x) required Zod v3 internally and broke with Zod v4 (`w._parse is not a function`). Backwards-compatible Zod v4 support shipped in **v1.23.0-beta.0** and is now in stable v1; issue #925 closed 2025-11-21.
 
-**Rule today**: SDK v1.23+ accepts Zod v3 or v4. SDK v2 alpha works with any [Standard Schema](https://standardschema.dev) library (Zod v4, Valibot, ArkType) and ships a `fromJsonSchema` adapter for raw JSON Schema (e.g. TypeBox).
+**Rule today**: SDK v1.23+ accepts Zod v3 or v4. SDK v2.0.0 requires a [Standard Schema](https://standardschema.dev) library (Zod >=4.2.0 recommended, Valibot, ArkType) and ships the `fromJsonSchema` adapter for raw JSON Schema (e.g. TypeBox). Zod 3 is a hard error on v2.
+
+### Duplicate SDK Installs from a Zod Peer Split
+
+A zod v3/v4 split across sibling packages installs **two copies of the SDK**, producing two structurally identical but nominally incompatible `Client`/`Server` types:
+
+> `@modelcontextprotocol/sdk` gets installed twice because [one dep] peers on zod@3 while [another] peers on zod@4. Two copies of `Client` with identical structure but different private field types.
+
+The symptom is a type error that reads like nonsense ("`Client` is not assignable to `Client`"). Check for duplicate resolutions (`npm ls @modelcontextprotocol/sdk`) **before** debugging the types. v2 mitigates the related runtime hazard - SDK error classes now brand-match across separately bundled copies via `Symbol.hasInstance`, with static `X.isInstance(value)` guards - but duplicate *type* identities are still a resolution problem you fix in the lockfile.
 
 ## outputSchema and structuredContent
 
@@ -245,6 +266,32 @@ const outputSchema = z.object({ id: z.string(), name: z.string() }).passthrough(
 **Client-side typing note**: `CallToolResult` carries an open `[x: string]: unknown` index signature, which defeats normal narrowing on `result.content` - e.g. `result.content.find(c => c.type === "text")` types the element as `unknown`. Consumers iterating tool results need an explicit cast or type guard rather than relying on inference.
 
 **Default rule for upstream pass-through**: When an `outputSchema` (or a nested response object) forwards data straight from an upstream API, default it to `.passthrough()`. Upstream payloads routinely carry fields you didn't model, and a strict outer schema turns every one into a client-side AJV rejection. Reserve the `.parse()`-strip path (FIX 1) for response schemas where you deliberately want to drop upstream fields before they reach the client. `inputSchema` is the opposite - keep it strict so the LLM can't pass unmodeled arguments.
+
+### Proxies and Aggregators: Strip `outputSchema` When Re-Listing
+
+If you re-expose another server's tools to a downstream client, **drop `outputSchema` from the tool definitions you list**. You cannot control which SDK version the end client runs, and a stricter client AJV-rejects `structuredContent` that the upstream server considers perfectly valid - a failure you cannot fix from the middle.
+
+> strip `outputSchema` from tool definitions when the proxy lists them to the downstream client. No `outputSchema` = no validation attempted. `structuredContent` still flows through untouched.
+
+The data still reaches the model; only the client-side validation step is skipped. That is the right trade for a component that doesn't own either end.
+
+**Diagnostic**: a doubled error prefix - `MCP error -32602: MCP error -32602:` - means a client or proxy in the chain re-wrapped a validation error it produced itself. The failure is client-side, not in your server.
+
+### Middleware Must Spread the Whole Result
+
+Any wrapper around a tool handler (auth gates, payment wrappers, logging, telemetry) must return `{...result}`, never a reconstructed object:
+
+```typescript
+// BROKEN: silently drops structuredContent and any future result field
+return { content: result.content, isError: result.isError, _meta: result._meta };
+
+// CORRECT: preserve everything, override only what you mean to
+return { ...result, _meta: { ...result._meta, "my/annotation": value } };
+```
+
+This exact bug shipped in a published payment-wrapper package. Reconstruction is a silent data-loss bug that only shows up for tools using the fields you forgot - and it breaks again every time the spec adds a result field.
+
+**Testing note**: the MCP Inspector is not ground truth for result and schema fields. It omits `outputSchema` in its display and does not surface `structuredContent` (it doesn't advertise the capability). Verify with a raw JSON-RPC `tools/list` / `tools/call` before concluding a field is missing.
 
 ## Non-Text Content Types
 
@@ -344,6 +391,28 @@ Clients silently truncate large results (SKILL.md "Result-Size Budgets" has the 
 - **Never cut JSON mid-body**: on overflow return a `{truncated: true, download_url, size_chars}` envelope instead of invalid JSON.
 - **Skip `isError` results entirely** - truncation must never mangle payment/auth challenges or error payloads clients parse programmatically.
 - **Budgets are per-connection, not per-call**: accept them as connection query params (`?max_chars=`, alongside `?tools=` filtering) instead of adding override args to every tool schema.
+
+#### Mechanics of the per-tool cap
+
+- **`_meta["anthropic/maxResultSizeChars"]` is a wire-level `tools/list` field, not an SDK feature.** It is a flat JSON field at the protocol level, so a Rust (`rmcp`), Python, or Go server can emit it exactly as a TypeScript one does - the TS SDK has no special privilege here. The key is literal, including the forward slash. Values above 500,000 are clamped, and clients that don't know the key ignore it harmlessly, so it is strictly additive.
+- **It raises the cap for text content only.** Image or binary bytes in a `CallToolResult` remain bound by the client's global env cap (`MAX_MCP_OUTPUT_TOKENS`) with no per-tool override. Don't size an image-returning tool against the raised number.
+- **Budget in bytes, not code points.** A char-count budget under-measures CJK and emoji payloads: a response that "fits" by character count can still blow the client cap once JSON-serialized.
+
+#### Prefer paging over truncation
+
+Let the *server* stop early rather than letting the client cut the tail off:
+
+- An agent that asks for `limit=200` and gets 73 hits with `has_more=true` knows more exists and can fetch it. The same agent handed a client-side `[OUTPUT TRUNCATED]` banner cannot tell what it lost.
+- Some clients don't truncate at all - they **spill the oversized result to a file** and hand the agent a small preview, forcing a multi-call round-trip through disk. That is strictly worse than paginating.
+- **Reject knowably-oversized requests at the input boundary** with an error naming the corrective action; that is faster feedback than truncating the output.
+- When you do truncate, **name the drill-in call in the marker**. `[truncated]` teaches the agent nothing; "showing 20 of 340 - call `get_detail(id)` for full text" teaches it the workflow.
+
+#### Response-shape economy
+
+- Rough targets: ~5-10KB total per search-style call, ~200 bytes/item for summaries, ~5KB/item for detail views.
+- **Auto-truncate with good defaults rather than exposing a knob** - agents don't set knobs they weren't told about.
+- Truncate on sentence or word boundaries, not mid-token.
+- **Hoist row-invariant metadata into a top-level lookup map keyed by id** instead of repeating it per row. Repeating two ~35-character fields across 200 rows that only span 20 distinct parents is ~14KB of literally duplicated text.
 
 ### No-Parameter Tools
 
