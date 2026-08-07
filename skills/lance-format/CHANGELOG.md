@@ -7,6 +7,18 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-08-07
+
+### Fixed
+
+- Completeness audit against the pre-split originals rescued three items that the condensation
+  would otherwise have dropped: the OpenTelemetry-metrics subsection (the only text unique to
+  the embedded performance-guide copy, now its own Part A section); the "authoritative in-repo
+  sources" pointer from the old reference preamble (now in the `lance-reference.md` index); and
+  the generated per-language SDK docs URL (restored to the ecosystem paragraph in `SKILL.md`).
+  Verified by line-level `comm` against `git show HEAD:` originals: zero content lines, zero of
+  57 section headings, zero of 271 PR citations, and zero of 48 measured-figure tokens lost.
+
 ## [0.14.0] - 2026-08-07
 
 ### Changed
@@ -36,6 +48,7 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Added
 - `references/maintenance.md` - the refresh workflow moved out of `SKILL.md`, extended with the
   reference-file layout table.
+
 
 ## [0.13.0] - 2026-08-07
 

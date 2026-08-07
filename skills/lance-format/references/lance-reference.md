@@ -12,3 +12,9 @@ files, in `performance.md`, and in `SKILL.md`) use the original 16-section numbe
 | 14 What changed (v7 -> v11) | `changelog-v7-v11.md` |
 
 Each file keeps the original section headings and its own table of contents.
+
+Citations are `path:line` relative to the repo root. Build a permalink as
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line numbers drift
+between tags; treat them as approximate. The authoritative in-repo sources are the format
+spec under `docs/src/format/`, the user guide under `docs/src/guide/`, the protobuf schemas
+under `protos/`, and the Rust workspace under `rust/`.

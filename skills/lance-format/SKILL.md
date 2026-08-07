@@ -2,7 +2,7 @@
 name: lance-format
 description: Deep reference for Lance v11 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace plus pylance. Covers the 2.x file format and structural encodings, the table format (manifests, fragments, transactions, OCC), vector / scalar / full-text indexes, MemWAL, schema evolution, time travel, namespaces, and object-store config. Use when building directly on the Lance crates or reading `.lance` datasets; this is the Lance format and engine (`lance-format/lance`), not the LanceDB product built on top of it.
 metadata:
-  version: "0.14.0"
+  version: "0.14.1"
   upstream: "lance-format/lance@v11.0.0-beta.2"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/lance-format
@@ -60,6 +60,7 @@ These are two different things and conflating them produces wrong answers.
 writes (`lance-flink`), PostgreSQL reads via `pglance`, a Cypher graph engine (`lance-graph`), a
 dataset browser (`lance-data-viewer`), agentic context management (`lance-context`), and
 namespace catalog implementations for Hive, Polaris, Gravitino, Unity Catalog, and AWS Glue.
+Generated per-language SDK docs live at `lance-format.github.io/lance-{python,java}-doc`.
 
 If you are linking the `lance` crate in `Cargo.toml`, you are using Lance directly - use this
 skill. If a question is about LanceDB internals, the storage layer underneath it is still
@@ -194,7 +195,7 @@ optimize by minimizing remote calls** - fewer commits, fewer scans, fewer round 
 | `format/file/` | 3 | Container spec, structural encodings + compression, format versions |
 | `format/table/` | 9 | Layout, schema, transactions (**conflict-resolution matrix**), versioning, row-id lineage, branch/tag, MemWAL, data overlay files |
 | `format/index/` | 1 + 4 svg | Index lifecycle, fragment coverage, compaction interplay |
-| `format/index/scalar/` | 9 | fts, fmindex, ngram, btree, bitmap, bloom_filter, label_list, zonemap, rtree |
+| `format/index/scalar/` | 9 | fts, fmindex, ngram, btree, bitmap, bloom_filter, label_list (`array_has_any/all`), zonemap, rtree |
 | `format/index/vector/` | 1 | IVF / PQ / SQ / RQ / HNSW concepts and storage layout |
 | `format/index/system/` | 2 | Fragment reuse index, MemWAL system index |
 | `integrations/` | 1 | DataFusion SQL over Lance, incl. JSON functions |
