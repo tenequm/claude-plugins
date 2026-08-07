@@ -113,7 +113,16 @@ The McpServer itself must be per-request, but its constant inputs should not be.
 
 ### Framework Integration
 
-**Hono** (web-standard): route `POST /mcp` to the `WebStandardStreamableHTTPServerTransport` handler; optionally add `GET /mcp` (SSE notifications) and `DELETE /mcp` (session termination) on 2025-era wires. v2 ships `@modelcontextprotocol/hono` (`createMcpHonoApp`).
+**Hono** (web-standard):
+```typescript
+import { Hono } from "hono";
+const app = new Hono();
+app.post("/mcp", handleMcpRequest);  // WebStandardStreamableHTTPServerTransport
+app.get("/mcp", handleMcpSse);       // Optional: SSE notifications (2025-era only)
+app.delete("/mcp", handleMcpDelete); // Optional: session termination (2025-era only)
+```
+
+v2 also ships `@modelcontextprotocol/hono` with `createMcpHonoApp()` if you want the wiring done for you.
 
 **Cloudflare Workers**: same pattern - the transport works natively in the Workers runtime. Call `preloadSchemas()` at module scope; v2's workerd build does it automatically.
 
@@ -193,7 +202,15 @@ Set them accurately - clients use them for consent prompts and auto-approval dec
 
 ### Stateful Tools
 
-With no protocol-level session on 2026-07-28, a server cannot rely on implicit per-connection state. The spec's (non-normative) answer: a creation tool returns an explicit handle (`create_basket` -> `{ basket_id: "bsk_a1b2c3" }`) that later tools accept as an ordinary argument. The model carries it forward. Four design rules:
+With no protocol-level session on 2026-07-28, a server cannot rely on implicit per-connection state. The spec's (non-normative) answer: a creation tool returns an explicit handle that later tools accept as an ordinary argument.
+
+```jsonc
+// → tools/call  { "name": "create_basket", "arguments": {} }
+// ← result      { "structuredContent": { "basket_id": "bsk_a1b2c3" } }
+// → tools/call  { "name": "add_item", "arguments": { "basket_id": "bsk_a1b2c3", "sku": "..." } }
+```
+
+The model carries the handle forward. Four design rules:
 
 - **Authorization** - a handle is a name, not a capability. Validate the caller against it on *every* call. Unauthenticated servers make it a de facto bearer token: real entropy (UUIDv4), bounded lifetime.
 - **Opacity** - handles encoding internal structure invite parsing and guessing.
@@ -368,7 +385,10 @@ Enforce your own cap server-side - see "Result-Size Budgets and Truncation" in `
 
 ### No-Parameter Tools
 
-For tools with no inputs, use an explicit empty schema - not `undefined` or omission: `inputSchema: { type: "object" as const, additionalProperties: false }`
+For tools with no inputs, use an explicit empty schema - not `undefined` or omission:
+```typescript
+inputSchema: { type: "object" as const, additionalProperties: false }
+```
 
 ## Security
 
