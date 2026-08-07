@@ -61,7 +61,7 @@ Other properties: No side effects; the skill itself executes nothing and require
 
 ## Skill Version
 
-0.7.0
+0.8.0
 
 ## Ethical Considerations
 
