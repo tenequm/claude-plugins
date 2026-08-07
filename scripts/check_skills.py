@@ -18,6 +18,9 @@ MAX_NAME_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1024
 MAX_COMPATIBILITY_LENGTH = 500
 MAX_SKILL_LINES = 500
+MAX_SKILL_CHARS = 25_000
+HARD_MAX_SKILL_LINES = 1000
+HARD_MAX_SKILL_CHARS = 50_000
 STANDARD_FIELDS = {
     "allowed-tools",
     "compatibility",
@@ -391,11 +394,25 @@ def lint_skill(skill_md: Path) -> LintResult:
     else:
         lint_dynamic_injection(skill_md, issues)
 
-    line_count = len(skill_md.read_text(encoding="utf-8").splitlines())
-    if line_count > MAX_SKILL_LINES:
+    text = skill_md.read_text(encoding="utf-8")
+    line_count = len(text.splitlines())
+    char_count = len(text)
+    if line_count > HARD_MAX_SKILL_LINES or char_count > HARD_MAX_SKILL_CHARS:
+        issues.append(
+            LintIssue(
+                skill_md,
+                f"SKILL.md exceeds the hard ceiling of {HARD_MAX_SKILL_LINES} lines / "
+                f"{HARD_MAX_SKILL_CHARS} chars ({line_count} lines, {char_count} chars): "
+                "condense, or split conditionally-loaded content to references/.",
+            )
+        )
+    elif line_count > MAX_SKILL_LINES or char_count > MAX_SKILL_CHARS:
         warnings.append(
             LintIssue(
-                skill_md, f"SKILL.md exceeds the repo policy limit of {MAX_SKILL_LINES} lines."
+                skill_md,
+                f"SKILL.md exceeds the recommended {MAX_SKILL_LINES} lines / "
+                f"{MAX_SKILL_CHARS} chars ({line_count} lines, {char_count} chars): "
+                "condense carefully; split only if content is conditionally loaded.",
             )
         )
 

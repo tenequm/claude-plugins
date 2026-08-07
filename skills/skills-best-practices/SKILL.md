@@ -1,8 +1,8 @@
 ---
 name: skills-best-practices
-description: Build high-quality Agent Skills for Claude following official Anthropic best practices. Covers SKILL.md structure, frontmatter, description writing, progressive disclosure, testing, patterns, troubleshooting, and distribution across all surfaces (Claude.ai, Claude Code, API, Agent SDK). Use when creating a skill, reviewing skill quality, debugging why a skill won't trigger, structuring skill directories, or writing skill descriptions.
+description: Build high-quality Agent Skills for any agent - opinionated best practices distilled from the Agent Skills spec, official Anthropic guidance, and production experience. Covers SKILL.md structure, frontmatter, description writing, single-file vs references/ layout, progressive disclosure, testing, patterns, troubleshooting, and distribution across all surfaces (Claude.ai, Claude Code, API, Agent SDK). Use when creating a skill, reviewing skill quality, debugging why a skill won't trigger, structuring skill directories, or writing skill descriptions.
 metadata:
-  version: "0.6.3"
+  version: "0.7.0"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/skills-best-practices
     emoji: "📐"
@@ -10,7 +10,7 @@ metadata:
 
 # Skills Best Practices
 
-Comprehensive reference for building Agent Skills that follow Anthropic's official guidelines. Skills are folders containing instructions, scripts, and resources that teach Claude how to handle specific tasks. They follow the [Agent Skills open standard](https://agentskills.io).
+Opinionated guide to building Agent Skills for any agent - distilled from the [Agent Skills open standard](https://agentskills.io), Anthropic's official guidance, and production experience, with deviations from the official line marked where they occur. Skills are folders (often just a single file) containing instructions, scripts, and resources that teach an agent how to handle specific tasks.
 
 ## Quick Start
 
@@ -41,9 +41,25 @@ Only `name` and `description` are required in frontmatter.
 
 ## Core Design Principles
 
-### Progressive Disclosure (Most Important)
+### Single File vs. references/ (Most Important)
 
-Skills load information in three levels to minimize token usage:
+**Default to a single SKILL.md.** One file can be pasted to a person, gisted, embedded in a CLI binary, and printed by a `<tool> skill` subcommand - a directory cannot. Split into `references/` only when **both** hold:
+
+1. **Conditional loading**: a meaningful chunk of content is needed by only a subset of invocations (e.g. a tracked-changes doc most DOCX tasks never touch). If every invocation reads everything anyway, splitting adds Read round-trips and costs shareability while saving nothing.
+2. **Size pressure**: the body exceeds the recommended budget below.
+
+**Distribution is a veto.** If the skill must travel as one file - shipped inside a CLI, printed by a command, shared by paste - stay single-file regardless of size and condense instead. Condensing means cutting redundancy, filler, and over-explanation while preserving every load-bearing instruction; losing substance to hit a line count is the failure mode, not the fix. See the [single-file CLI-embedded pattern](references/patterns.md) used by playwright-cli, browser-use, and agent-browser.
+
+**Size guidance** (opinionated lines drawn from experience, not enforced spec limits) - check with `wc -c SKILL.md`; chars are easier to verify than tokens:
+
+| Tier | Lines | Chars | Beyond it |
+|------|-------|-------|-----------|
+| Recommended | 500 | 25k | Condense carefully; split only if the conditional-loading test passes |
+| Hard ceiling | 1000 | 50k | Must condense or split |
+
+> Official Anthropic guidance says to split at 500 lines. That advice assumes registry-installed skills with rarely-needed subtopics; this skill deliberately deviates for the single-file distribution cases above.
+
+When a skill does split, information loads in three levels:
 
 | Level | When Loaded | Token Cost | Content |
 |-------|------------|------------|---------|
@@ -51,15 +67,13 @@ Skills load information in three levels to minimize token usage:
 | **2: Instructions** | When skill triggers | <5k tokens (recommended) | SKILL.md body |
 | **3: Resources** | As needed | Effectively unlimited | Bundled files, scripts |
 
-Keep SKILL.md under **500 lines**. Move detailed docs to separate files and reference them:
+Reference detail files from SKILL.md so they load only when the task requires them:
 
 ```markdown
 ## Advanced features
 - **Form filling**: See [FORMS.md](FORMS.md)
 - **API reference**: See [reference.md](reference.md)
 ```
-
-Claude reads referenced files only when the task requires them.
 
 ### Composability
 
@@ -315,7 +329,7 @@ Exit 0 means valid. It checks `SKILL.md` format and enforces the spec's strict f
 | Skill never loads | Description too vague | Add specific triggers and key terms |
 | Skill loads for wrong tasks | Description too broad | Add negative triggers, be more specific |
 | Instructions not followed | Too verbose or buried | Put critical instructions at top, use headers |
-| Slow/degraded responses | SKILL.md too large | Move content to references/, keep under 500 lines |
+| Slow/degraded responses | SKILL.md too large | Condense first; split to references/ only if content is conditionally loaded (see Single File vs. references/) |
 | "Could not find SKILL.md" | Wrong filename | Must be exactly `SKILL.md` (case-sensitive) |
 | "Invalid skill name" | Spaces or capitals | Use kebab-case: `my-skill-name` |
 | Whole skill silently skipped at load | Description exceeds 1024 chars | Trim it - the loader rejects the file, not just the description |

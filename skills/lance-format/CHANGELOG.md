@@ -7,6 +7,64 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-07
+
+### Changed
+- Re-grounded against upstream `v10.0.0-beta.7` -> `v11.0.0-beta.2` (128 commits, 9
+  breaking-labeled PRs). Retitled "Lance v10" -> "Lance v11"; bumped the workspace pin,
+  permalink base, and citation tag across `SKILL.md`, both references, and `skill-card.md`.
+- **Release-line correction**: `v10.0.0` FINAL was never tagged - `release/v10.0` sits at
+  `10.0.0-rc.3` and branched exactly at `v10.0.0-beta.7`. The `10.1.0-beta.*` line was
+  re-rooted in place as `11.0.0-beta.*` by the release bot; both release-root tags share
+  base `10.0.0-rc.1`. The stable pin is now **`v9.0.1`** (2026-08-06), matching crates.io.
+- **Module reorganization** (section 2.1, new): `lance-encoding::version` deleted -
+  `LanceFileVersion` and `ConcreteFileVersion` now live in `lance-file::version`. `FileWriter`
+  became an enum, `lance_io::encodings` and `lance-encoding::previous` were removed, and
+  per-version `versions/v2_{0,1,2,3}` / `array_encoding` trees replaced them.
+- **Breaking (format-level)**: fragment ids are now a dataset-lifetime high-water mark -
+  overwrite no longer restarts at 0, overwrite fragments carrying a deletion file are
+  rejected, and duplicate fragment ids block all commits (#8206).
+- Commit-handler routing table corrected: `goosefs` (#8134) plus the already-missing
+  `abfss` / `tos` / `shared-memory` all route to `ConditionalPutCommitHandler`.
+- Dependency pins: `opendal 0.57 -> 0.58.1`, `object_store_opendal 0.58`; `strum` and
+  `goosefs-sdk` dropped from workspace deps; `rust-stemmers -> frostem` (Greek panic fix).
+- Doc mirror resynced: 4 changed files (`guide/migration.md`, `guide/object_store.md`,
+  `guide/observability.md`, `quickstart/full-text-search.md`). No files added or removed.
+- Compressed the v9/v8/v7 history sections in `SKILL.md` to make room for v11 under the
+  repo's 500-line cap; stripped stale "(current tag)" labels from historical delta headings.
+
+### Added
+- New FTS index axis: `DocumentGranularity` (ROW / LIST_ELEMENT), `posting_format_version`,
+  the `_doc_index` column, and `list_element` as a third trigger requiring FTS format v3.
+- Zone map `has_null_bitmap` (making `IS NOT NULL` scan-free) and all-type support, with
+  null counts only for nested types.
+- Compound FTS scoring core - Boolean/Phrase/Boost composition, public `CompoundQueryExec`,
+  cost-ordered conjunctions; `AND` clauses are scoring `MUST` clauses that affect `_score`.
+- Manifest transaction spilling above 20 MiB; pluggable cache-backend registry (`moka://`);
+  `CacheBackend::deep_size_of_entries` and its effect on reported cache sizes.
+- Object store: `aws_provider_scheme` (token / ecs / irsa); the GooseFS conditional-put
+  migration and its mixed-version overwrite hazard; multipart-retry part-identity fix.
+- Query-time vector knobs `nprobes` and `refine_factor`; the `when_not_matched_by_source_*`
+  merge-insert family; the FTS 18-language roster and text-vs-json document types;
+  jieba/lindera user dictionaries; MemWAL GC and reader-consistency semantics; dense-vs-sparse
+  data-overlay shapes; the JSON projection limitation; the Blob v2 rewrite-migration path; and
+  the wider ecosystem (Flink, pglance, Lance Graph, named catalog implementations).
+- `performance.md`: a new "Local-filesystem crash safety and recovery" subsection (no
+  fallback to version N-1 on a corrupt manifest; `latest_version_hint.json` is not read on
+  local; `count_rows` cannot validate integrity), plus auto-cleanup gating economics,
+  `LANCE_MEM_POOL_SIZE` sizing, `optimize_indices` delta-collapse semantics, WORM/Object Lock
+  incompatibility, and `memory://` vs `shared-memory://` test-isolation traps.
+- `lance-reference.md`: the SQL/DataFusion surface has no kNN; dataset *creation* is not
+  OCC-protected; the FRI is not per-index coverage; NGRAM vs FM-Index matching semantics; the
+  benign IVF_PQ empty-partition warning; volume-independent scalar-index pushdown.
+
+### Fixed
+- Sparse-writer citation corrected to `encoding.md:373-375`.
+- ACORN-1 nuance added: skipped when the prefilter mask passes all rows or leaves under 10%,
+  with fallback to `search_basic`.
+
+Verified against: lance-format/lance@v11.0.0-beta.2
+
 ## [0.12.0] - 2026-07-30
 
 ### Changed

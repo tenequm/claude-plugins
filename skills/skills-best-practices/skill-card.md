@@ -2,7 +2,7 @@
 
 ## Description
 
-skills-best-practices is a reference guide for building high-quality Agent Skills following Anthropic's official guidelines, covering SKILL.md structure, frontmatter, description writing, progressive disclosure, testing, distribution, and ClawHub publishing.
+skills-best-practices is an opinionated reference guide for building high-quality Agent Skills for any agent - distilled from the Agent Skills spec, Anthropic's official guidance, and production experience - covering SKILL.md structure, frontmatter, description writing, single-file vs references/ layout, testing, distribution, and ClawHub publishing.
 
 This skill is ready for commercial and non-commercial use.
 
@@ -61,7 +61,7 @@ Other properties: No side effects; the skill itself executes nothing and require
 
 ## Skill Version
 
-0.6.3
+0.7.0
 
 ## Ethical Considerations
 

@@ -7,6 +7,19 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-07
+
+### Changed
+
+- Repositioned the skill as opinionated guidance for any agent, distilled from the spec, official docs, and production experience (was "following Anthropic's official guidelines"); deviations from official guidance are now marked where they occur.
+- Replaced "Progressive Disclosure (Most Important)" with "Single File vs. references/ (Most Important)": single-file SKILL.md is the default; split only when content is conditionally loaded (big chunks needed by only some invocations) AND size pressure exists. Distribution is a veto - skills that must travel as one file (CLI-embedded, pasted, printed by a command) stay single-file and get condensed carefully, never lossily trimmed.
+- Size guidance is now two-tier: 500 lines / 25k chars recommended, 1000 lines / 50k chars hard ceiling, checked with `wc -c` (chars are easier for models to verify than tokens).
+- Troubleshooting row and quality checklist reworded to match the new stance.
+
+### Added
+
+- references/patterns.md: "Single-File Skill Embedded in a CLI" pattern (compile SKILL.md into the binary, print via a `<tool> skill` subcommand - the shape playwright-cli, browser-use, and agent-browser converge on).
+
 ## [0.6.3] - 2026-07-22
 
 ### Added

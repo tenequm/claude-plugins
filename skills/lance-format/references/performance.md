@@ -1,14 +1,16 @@
 # Lance performance - combined reference
 
-All official performance guidance from the Lance docs (`lance-format/lance@v10.0.0-beta.7`,
+All official performance guidance from the Lance docs (`lance-format/lance@v11.0.0-beta.2`,
 `docs/src/`) collected in one place (Part A, verbatim with sources noted), followed by
 field-verified practices from running Lance against remote object storage (Part B).
 
-Note on provenance: `docs/src/guide/performance.md` is byte-unchanged between
-`v9.1.0-beta.8` and `v10.0.0-beta.7`, so Part A's official text is current as written. The
-"Performance changes not in the guide" subsection at the end of Part A is derived from the
-v10 source and commit history rather than the guide - it is labeled as such because upstream
-has not documented it in the performance guide yet.
+Note on provenance: `docs/src/guide/performance.md` is byte-unchanged from `v9.1.0-beta.8`
+through `v11.0.0-beta.2` - every number, default, and recommendation Part A quotes is current as
+written, and the same holds for the other perf-bearing sections copied below
+(`guide/json.md`, `format/table/transaction.md`, the full-text-search "Performance Tips"). The
+"Performance changes not in the guide" subsections at the end of Part A are derived from source
+and commit history rather than the guide - they are labeled as such because upstream has not
+documented them in the performance guide yet.
 
 Related verbatim references in this skill: `docs/` (the full official doc mirror, including
 per-index storage/memory/training costs in `docs/format/index/scalar/fts.md` and
@@ -605,6 +607,50 @@ exists - FRI-only and system-index-only datasets included (PR #7778). If compact
 previously dominated by the `_rowid` scan and RoaringTreemap build on such a dataset, that cost
 is gone.
 
+## Performance changes not in the guide (v11, source-derived)
+
+Same caveat as above: verified against the `v11.0.0-beta.2` source and commit history, absent
+from `docs/src/guide/performance.md`.
+
+**Large commits got much cheaper on the manifest side** (PR #7881). Transactions serialized
+above 20 MiB are no longer inlined into the manifest and live only in their external
+`_transactions/` file. Measured on a large workload: the full-commit manifest shrank from
+1576 MiB to ~790 MiB (-50%). There is no configuration to set - it is automatic, and it matters
+most on object storage, where manifest size is read on every dataset open.
+
+**Two O(n) fixes on hot paths.** `build_manifest` no longer does `O(n*m)` fragment comparisons
+for Update/Delete transactions (PR #8210), which shows up on datasets with many fragments; and
+fixed-width decode buffers are now preallocated exactly via a new optional
+`decoded_size_bytes` contract on the decompressor traits (PR #8091), cutting **index-cache entry
+weight by up to 74%** on IVF_SQ configurations. The latter is a pure accounting improvement -
+"This does not change the on-disk format" - but it means the same `index_cache_size_bytes` now
+holds substantially more, so re-measure before shrinking the budget.
+
+**FTS conjunctions are cheaper and cold search parallelizes.** Conjunction approximations are
+now ordered by iterator cost (PR #8299: 1.50x fewer comparisons, 1.12x speedup, bit-for-bit
+identical results and tie order), and doc lengths preload in parallel on the cold deferred
+search path (PR #8119).
+
+**The cache backend is no longer a hard-wired choice** (PR #7683), which softens the "no opt-out"
+statement in the v10 subsection above. A process-wide registry accepts custom backends, and a
+compact URI form (`moka://?capacity=1073741824`) selects one without code. Related: reported
+cache sizes shrink after PR #8159, because shared `Arc`/Arrow allocations are no longer charged
+once per entry - **recalibrate any alert thresholds keyed on `LanceCache::deep_size_of()`
+rather than reading the drop as a regression.**
+
+**Incremental compaction is now expressible** (PR #8116): `compact_files(max_source_fragments=N)`
+bounds a run to N source fragments, "allowing compaction to proceed incrementally. Fragments are
+processed oldest first." Also settable as the manifest config key
+`lance.compaction.max_source_fragments`. This is the clean answer to "compaction takes too long
+to ever finish in my maintenance window" - previously the only lever was letting it run to
+completion.
+
+**Multipart uploads no longer lose parts on retry** (PR #8174). The old path called
+`put_part` again on failure, and native cloud stores allocate a fresh part number for that call,
+so the retry skipped the failed part and completion failed with `Missing part`. Retries now
+happen inside the HTTP connector. If you saw sporadic `Missing part` failures on large writes,
+this is the fix; OpenDAL-backed stores were never affected and are unchanged.
+
 ---
 
 # Part B: Field-verified remote-storage practices
@@ -667,9 +713,51 @@ fewer round trips.
   `object_store::LocalFileSystem` (`rust/lance-io/src/object_store/providers/local.rs:26`,
   `object_store 0.13.2`); Lance issues no fsync of its own on the commit path. Whatever
   crash-durability guarantee you get on a local dataset is that crate's, so do not assume a
-  returned commit means the manifest bytes survived a power loss. On a machine that can lose
-  power mid-commit, treat a local Lance dataset as needing the same verify-by-scan recovery
-  posture you would give any unsynced write path.
+  returned commit means the manifest bytes survived a power loss. See the next subsection for
+  what that costs you in practice.
+
+## Local-filesystem crash safety and recovery
+
+This is the sharpest edge in Part B, because the failure is **permanent and silent** and has no
+analogue on object storage. Mechanism, verified at `v11.0.0-beta.2`:
+
+- **Latest-version resolution is "highest number wins", with no fallback.** On a local store
+  Lance scans `_versions/` and keeps the maximum
+  (`rust/lance-table/src/io/commit.rs:693-694`, `current_manifest_local`, selected first for
+  local at `:283-286`). A manifest that exists but is truncated or zero-length is a hard error -
+  "Invalid format: file size is smaller than 16 bytes"
+  (`rust/lance-table/src/io/manifest.rs:60-63`) or "Invalid format: magic number does not match"
+  (`:68`) - propagated straight up by `Dataset::latest_manifest`
+  (`rust/lance/src/dataset.rs:1180`). The only error the open path swallows is `NotFound`
+  (`rust/lance/src/io/commit.rs:313`), and corruption is not `NotFound`. **There is no
+  "fall back to version N-1" anywhere.** So an unclean stop that creates the manifest without
+  flushing its bytes leaves a dataset that will not open, even though version N-1 is fully
+  intact on disk.
+- **Editing `latest_version_hint.json` back does nothing.** On a local store the hint file is
+  never read at all - `current_manifest_path` branches on `object_store.is_local()` before the
+  hint path is considered (`commit.rs:283-291`). It *is* written on local now (`:79`, gated by
+  `version_hint_globally_enabled() && !list_is_lexically_ordered`, `:328`), but writes are
+  best-effort and it "never affects correctness (readers verify the hinted version and probe
+  upward from there)" (`:340-341`). Rewinding it is inert.
+- **The repair is to move the poisoned manifest aside**, not to touch the hint: quarantine
+  (never delete) the sub-16-byte `*.manifest` files under `_versions/`, and the next-highest
+  intact version becomes latest again. Rename rather than remove, so a misdiagnosis is
+  reversible.
+- **Then validate with a scan, not with `count_rows`.** `count_rows(None)` sums
+  `physical_rows - deletions` straight from fragment metadata and opens no data file when the
+  manifest carries the counts (`rust/lance/src/dataset/fragment.rs:1375-1379`, summed at
+  `rust/lance/src/dataset.rs:1664-1671`). A zeroed or truncated data file that a surviving
+  manifest still references is completely invisible to it - the row count reports fine while
+  the data is unreadable. Only a drained scan proves integrity.
+- **Object storage is structurally immune to this.** S3-style PUTs are atomic, so a killed
+  writer leaves *no object* rather than an empty one, and there is no half-written manifest to
+  poison the version sequence. This is a local-store-only failure class.
+- If you run Lance on a local filesystem on hardware that can lose power, the mitigation is an
+  fsync-on-write `WrappingObjectStore` (file plus parent directory after every put,
+  multipart-complete, copy, and rename) installed innermost in the store-wrapper chain and gated
+  to local URLs only, plus a `_versions/` walk on open that rename-quarantines undersized
+  manifests. The fsync layer's measured cost on a multi-GiB, few-hundred-thousand-row corpus
+  sync was not detectable.
 
 ## Index maintenance
 
@@ -712,6 +800,63 @@ fewer round trips.
   round trips dominate. If a periodic rebuild can exceed your scheduler interval, rely on
   Lance OCC (conflicting commit -> retry) and keep rebuild cadence low rather than trying
   to serialize externally.
+- **`optimize_indices(append())` never collapses anything - and nothing else will either.**
+  `append()` sets `num_indices_to_merge: Some(0)` (`rust/lance-index/src/optimize.rs:79-80`) and
+  the merge path short-circuits on zero (`rust/lance/src/index/append.rs:408`). **No automatic
+  count- or size-based collapse threshold exists in the codebase**, so a pipeline that only ever
+  calls `append()` accumulates delta segments without bound until something else breaks - and
+  what breaks first depends on the index family, which makes the symptoms look unrelated. Note
+  the *default* `OptimizeOptions` is better behaved than `append()`: with `num_indices_to_merge`
+  unset it collapses the trailing segment on every call (`append.rs:400-403`), and
+  `retrain: true` merges everything into one. Pick an explicit ladder - collapse at a modest
+  segment count, full rebuild at a higher one - and treat those numbers as correctness floors
+  rather than tuning preferences.
+- **`LANCE_MEM_POOL_SIZE` is the hidden ceiling on large from-scratch scalar index builds, and
+  the default is smaller than it looks.** BTree/JSON training scans run with `use_spilling: true`
+  (`rust/lance/src/index/scalar.rs:166`, `rust/lance-index/src/scalar/btree.rs:1942`), which
+  wraps a DataFusion `FairSpillPool` sized from that variable
+  (`rust/lance-datafusion/src/exec.rs:364,378`). The default is
+  `DEFAULT_LANCE_MEM_POOL_SIZE_PER_PARTITION = 150 MiB` (`exec.rs:309`) multiplied by
+  `target_partition.unwrap_or(1)` (`exec.rs:314,324`) - **so with `target_partition` unset the
+  pool is 150 MiB total, not 150 MiB per core.** A large sort that fragments into more spill
+  files than its fair-share slice can merge fails with a DataFusion `Resources exhausted ...
+  ExternalSorterMerge` error rather than spilling further. Raise `LANCE_MEM_POOL_SIZE` (or set
+  `LANCE_BYPASS_SPILLING`, `exec.rs:349`, to disable the pool entirely) before concluding the
+  index cannot be built.
+- **Auto-cleanup is opt-in and interval-gated - but `skip_auto_cleanup` is Rust-only.** The
+  per-commit hook returns immediately unless the dataset config carries
+  `lance.auto_cleanup.interval` and the current version is a multiple of it
+  (`rust/lance/src/dataset/cleanup.rs:1450-1455`), and `auto_cleanup` defaults to `None`
+  (`rust/lance/src/dataset/write.rs:434`); the gate itself is an in-memory config read costing no
+  I/O. When it *does* fire it is expensive exactly as documented - it "lists and reads every
+  manifest in the dataset even when nothing is old enough to delete" (`write.rs:356-357`,
+  listing at `cleanup.rs:680`) - so choose the interval against version-accumulation rate, not
+  write rate. Rust callers can also set `skip_auto_cleanup: true` (`write.rs:367`, builder at
+  `write/commit.rs:212`); **pylance does not expose it** (only `auto_cleanup_options` /
+  `enable_auto_cleanup` / `disable_auto_cleanup`), so from Python the lever is the interval or
+  disabling the feature.
+- **Cleanup runs outside the OCC protocol, which is *why* the 7-day floor exists.** Cleanup
+  writes no manifest - it is a list-and-delete pass (`.remove_stream(paths_to_delete)`,
+  `cleanup.rs:752`) - and the module doc states the bind directly: "It is also difficult to
+  distinguish between a data/tx/idx file which was leftover from an abandoned transaction and a
+  data file which is part of an ongoing operation (both will look like unreferenced data files)"
+  (`cleanup.rs:20-22`). Hence `maybe_in_progress` holds anything newer than the threshold
+  (`:666-667`). The operational rule that follows: **never run cleanup with
+  `delete_unverified=true` while writers are live** - that flag removes the only thing standing
+  between a concurrent in-flight write and deletion of its data files.
+- **Object Lock / WORM retention must be off on the bucket.** Cleanup issues real per-object
+  deletes (`store.delete(&location)`, `rust/lance-io/src/object_store.rs:964`) covering
+  unreferenced data files, old manifests, and transaction files; index builds also delete temp
+  objects (`rust/lance/src/index/vector/ivf.rs:2489`, `ivf/io.rs:501,520`). WORM retention blocks
+  those deletes outright, so maintenance fails and the store grows without bound. (Compaction
+  itself issues no deletes - it only writes new fragments and lets cleanup reclaim the old ones -
+  so the failure surfaces at cleanup time, not at compaction time.)
+- **Turning off stable row IDs is not the whole story on remap cost.** The gate is now
+  `!uses_stable_row_ids() && !options.defer_index_remap && has_address_style`
+  (`rust/lance/src/dataset/optimize.rs:2060-2061`), and row-address capture is skipped entirely
+  when nothing will consume it (`:1653-1657`). So a non-stable-row-id dataset with **no**
+  address-style index pays no remap cost at all - the "every compaction rewrites every index
+  entry" rule only bites when such an index actually exists.
 
 ## Read path and query shaping
 
@@ -734,7 +879,24 @@ fewer round trips.
 - **Substring search over an unindexed column is a full scan** - a BTree cannot serve
   `LIKE '%needle%'`. The official substring answers are the NGRAM index (for
   `contains()`) and the FM-Index (v8+, exact-byte only, segmented, no BM25 ranking).
-  Until one is built, narrow the scan with indexed/materialized predicates first.
+  Until one is built, narrow the scan with indexed/materialized predicates first. Two
+  constraints decide which index is even possible: NGRAM requires a `Utf8`/`LargeUtf8` column
+  and rejects `LargeBinary` outright, and NGRAM lowercases and ASCII-folds both sides while
+  FM-Index matches raw bytes - so the two return different result sets for the same needle
+  (`lance-reference.md` section 11.2). Do not benchmark one against the other without checking
+  that they are answering the same question.
+- **Tune a slow vector query before rebuilding the index.** `nprobes` (IVF partitions searched)
+  and `refine_factor` (candidates re-ranked against full-precision vectors) are query-time
+  parameters that trade latency for recall with no reindex
+  (`docs/src/quickstart/vector-search.md:208-210`). Sweep those first; a rebuild with different
+  build-time parameters is the expensive last resort. Related trap: `approx_mode="fast"` does
+  not reliably mean ACORN ran - it is skipped when the prefilter mask passes all rows or leaves
+  under 10%, so a null result from that flag may mean the path was never entered.
+- **Scalar-index pushdown does not wait for scale.** The planner emits a `ScalarIndexQuery`
+  whenever the index exists, with no row-count or selectivity heuristic anywhere in the
+  expression module - the plan for four rows and for two thousand is identical. Useful in both
+  directions: a small table does benefit from a scalar index, and an unwanted index scan will
+  not "optimize itself away" on small data.
 - **`Dataset::versions()` is O(history) remote reads, not a metadata lookup.** It lists
   manifests and then **reads every one** to recover its timestamp
   (`rust/lance/src/dataset.rs:2618-2635`, which carries an upstream
@@ -795,9 +957,36 @@ not in release notes:
   reports transient storage failures as `TableNotFound` (PR #7931) - a create-or-open path that
   treated that error as "absent" could previously overwrite a live table on a 503, and now sees
   `Throttling` / `ServiceUnavailable` / `Internal` instead.
-- **crates.io carries finals only.** The newest published crate is `lance 9.0.0` (2026-07-24);
+- **crates.io carries finals only.** The newest published crate is `lance 9.0.1` (2026-08-06);
   every beta and rc exists as a git tag with no crate. Pinning a beta means a git dependency,
   which also means no crates.io yank signal if one turns out bad.
+- **Do not assume the previous major ever shipped a final.** The auto-bump has now fired on two
+  consecutive dev lines, and *neither* `v9.1.0` nor `v10.1.0` was ever released; `v10.0.0` never
+  got a final either, stopping at `v10.0.0-rc.3` on `release/v10.0`. "Upgrade to the latest
+  major" is not a valid plan without checking which majors actually have finals - as of
+  `v11.0.0-beta.2` that is `v9.0.1` and below.
+- **v11 changes fragment-id semantics** (PR #8206). Overwrite no longer restarts ids at 0, and
+  any commit producing duplicate ids is now rejected. Two audit items on a bump: code that reads
+  a fragment by a hardcoded id after an overwrite, and any dataset written by Lance 0.16 or
+  earlier that may already contain duplicate ids - those still read but can no longer be
+  committed to, so a long-lived store may become read-only at exactly the wrong moment.
+- **v11 changes HNSW graphs** (PR #8188): `m < 4` is now rejected, the persisted level layout was
+  corrected, and greedy descent stops before level 0. Recall and latency both move. Re-baseline
+  vector benchmarks across this bump rather than comparing to pre-v11 numbers.
+- **v11 shrinks reported cache sizes** (PR #8159) without shrinking the cache - shared
+  `Arc`/Arrow allocations are no longer double-counted per entry. An alert keyed on
+  `LanceCache::deep_size_of()` will look like a sudden drop in cache utilization.
+- **`lance.json` columns and `compact_files` still take a logical/physical roundtrip.**
+  `prepare_reader` in `optimize.rs` uses `scanner.try_into_stream()`
+  (`rust/lance/src/dataset/optimize.rs:1376`), whose `DatasetRecordBatchStream` applies
+  `to_logical_stream` - converting `lance.json` LargeBinary to `arrow.json` Utf8
+  (`rust/lance/src/dataset/scanner.rs:6386`) - and the write side converts back with
+  `to_physical_stream` (`rust/lance/src/dataset/write.rs:1292`). The identical asymmetry was
+  fixed for `update.rs` (PR #6741, which now uses the raw physical stream at
+  `write/update.rs:291`) but **never applied to `optimize.rs`**, and no test combines a JSON
+  field with compaction. It is benign only because the JSONB roundtrip is idempotent when the
+  stored bytes are genuinely JSONB. The durable rule: **never write plain UTF-8 JSON text into a
+  column tagged `lance.json`** - encode JSONB, and let Lance own the representation.
 
 ## Benchmarking traps
 
@@ -820,3 +1009,23 @@ Each of these produced a wrong conclusion that shipped or nearly shipped:
   compaction and index-append variance (single index-appends spiked 40-70 s); a change
   that reduces cleanup walks by 87% may not move wall time at all. Use paired
   before/after rounds to separate store-latency noise from the change under test.
+- **An in-process S3 mock cannot validate OCC.** Mock servers backed by a local filesystem
+  typically implement conditional PUT as check-then-write, with a real race window between the
+  existence check and the write, so two concurrent `PutMode::Create` calls can both succeed and
+  the last one wins. Real S3, R2, GCS, and Azure do this atomically. A concurrency test that
+  passes against such a mock proves nothing about commit safety - run OCC tests against a real
+  conditional-put store, or against `s3+ddb://`.
+- **`memory://` sharing is session-scoped, and the scoping is not what the URI suggests.**
+  `MemoryStoreProvider::new_store` mints "a fresh in-memory object store for each call"
+  (`rust/lance-io/src/object_store/providers/memory.rs:14,25`), but the registry caches by
+  `(prefix, params)` with weak refs and the memory provider returns the **constant** prefix
+  `"memory"` (`memory.rs:56`) - so within one `Session` *all* `memory://` URIs collapse to one
+  cache key and two opens return the same store, whatever path you wrote in the URI. Across
+  sessions they share nothing, because `Session::default()` builds a new `ObjectStoreRegistry`
+  (`rust/lance/src/session.rs:326`), and `ObjectStore::memory()` bypasses the registry entirely
+  (`rust/lance-io/src/object_store.rs:583-586`). Both halves are test-isolation traps: distinct
+  `memory://` paths in one session are *not* isolated from each other, and the same
+  `memory://` path in two sessions is *not* shared. Use **`shared-memory://`** when you actually
+  want a cross-session in-memory store - that scheme exists precisely because "`memory://` mints
+  a fresh `InMemory` per `new_store` call"
+  (`rust/lance-io/src/object_store/providers/shared_memory.rs:42`).

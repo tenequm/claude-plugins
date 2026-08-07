@@ -2,7 +2,7 @@
 
 ## Description
 
-lance-format is a deep reference for Lance v10 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace: file/table formats, structural encodings, vector/scalar/full-text indexes, transactions, MemWAL, namespaces, and object-store configuration.
+lance-format is a deep reference for Lance v11 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace: file/table formats, structural encodings, vector/scalar/full-text indexes, transactions, MemWAL, namespaces, and object-store configuration.
 
 This skill is ready for commercial and non-commercial use.
 
@@ -39,7 +39,7 @@ Mitigation: Verify retention requirements and tags/branches before cleanup; test
 
 Risk: The skill covers unstable format features (file format 2.2/2.3, Data Overlay Files, MemWAL) whose on-disk encodings can change between beta tags; datasets written with them may become unreadable by other Lance versions.
 
-Mitigation: The skill explicitly instructs pinning concrete release tags (v9.0.0 for stable) and using explicit format version numbers rather than the floating next alias.
+Mitigation: The skill explicitly instructs pinning concrete release tags (v9.0.1 for stable) and using explicit format version numbers rather than the floating next alias.
 
 Risk: Misapplied performance tuning against remote object storage can multiply request costs and latency.
 
@@ -47,7 +47,7 @@ Mitigation: The skill's performance reference mandates leaving store knobs at de
 
 ## References
 
-- Upstream: https://github.com/lance-format/lance (tracked tag: v10.0.0-beta.7)
+- Upstream: https://github.com/lance-format/lance (tracked tag: v11.0.0-beta.2)
 - Official docs (mirrored verbatim in references/docs/): Lance docs at the tracked tag
 - Source: https://github.com/tenequm/skills/tree/main/skills/lance-format
 
@@ -57,13 +57,13 @@ Output type(s): Rust and Python code using the Lance crates/pylance, format and 
 
 Output format: Markdown with Rust/Python/SQL code blocks.
 
-Output parameters: Citations reference path:line in the lance-format/lance repo at the tracked tag; permalinks built as https://github.com/lance-format/lance/blob/v10.0.0-beta.7/<path>.
+Output parameters: Citations reference path:line in the lance-format/lance repo at the tracked tag; permalinks built as https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>.
 
 Other properties: Reference-only skill - it performs no I/O itself; code it produces can create, modify, or delete datasets when executed by the user.
 
 ## Skill Version
 
-0.12.0
+0.13.0
 
 ## Ethical Considerations
 
