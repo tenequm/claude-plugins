@@ -34,19 +34,18 @@ Format: `{vendor-prefix}/{extension-name}`
 | MCP Apps | `io.modelcontextprotocol/ui` | Stable (SEP-1865, 2026-01-26) | [ext-apps](https://github.com/modelcontextprotocol/ext-apps) |
 | OAuth Client Credentials | `io.modelcontextprotocol/oauth-client-credentials` | Draft | [ext-auth](https://github.com/modelcontextprotocol/ext-auth) |
 | Enterprise-Managed Auth | `io.modelcontextprotocol/enterprise-managed-authorization` | Stable (2026-06-18) | [ext-auth](https://github.com/modelcontextprotocol/ext-auth) |
+| Tasks | `io.modelcontextprotocol/tasks` | Official (SEP-2663, final 2026-05-15) | [ext-tasks](https://github.com/modelcontextprotocol/ext-tasks) |
 
 ### Negotiation
 
-Both sides declare extension support in `extensions` during initialization:
+**2025-era wires** - both sides declare extension support in `extensions` during initialization:
 
 ```json
 // Client (initialize request)
 {
   "capabilities": {
     "extensions": {
-      "io.modelcontextprotocol/ui": {
-        "mimeTypes": ["text/html;profile=mcp-app"]
-      }
+      "io.modelcontextprotocol/ui": { "mimeTypes": ["text/html;profile=mcp-app"] }
     }
   }
 }
@@ -54,12 +53,16 @@ Both sides declare extension support in `extensions` during initialization:
 // Server (initialize response)
 {
   "capabilities": {
-    "extensions": {
-      "io.modelcontextprotocol/ui": {}
-    }
+    "extensions": { "io.modelcontextprotocol/ui": {} }
   }
 }
 ```
+
+**On 2026-07-28** there is no `initialize`, so this exchange does not exist. Clients advertise extension support **per request**:
+
+> Clients advertise extension support in `_meta["io.modelcontextprotocol/clientCapabilities"]` within each request
+
+Servers advertise theirs in the `capabilities` of their `server/discover` result. The `extensions` field was added to both `ClientCapabilities` and `ServerCapabilities` in this revision.
 
 Each extension defines its settings schema. Empty object = no settings.
 
@@ -190,7 +193,9 @@ Servers are versioned within the registry. See [versioning guide](https://modelc
 
 ## Server Capabilities Beyond Tools
 
-The spec includes server-to-client request capabilities. Elicitation and Progress are core protocol features; Sampling is advisory-deprecated (SEP-2577) and Tasks has moved to an official extension (SEP-2663).
+The spec includes server-to-client request capabilities. Elicitation and Progress are core protocol features; Sampling is Deprecated (SEP-2577) and Tasks has moved to an official extension (SEP-2663).
+
+> **Shape change on 2026-07-28.** Servers can no longer send requests to clients at all. Elicitation and sampling are reached through **Multi Round-Trip Requests**: the tool returns an `InputRequiredResult` carrying `inputRequests`, and the client answers with `inputResponses` on a retry of the original request. The `ctx.mcpReq.*` call style below is the 2025-era API - still what the SDK does by default. See `references/spec-2026-07-28.md`.
 
 ### Elicitation
 
@@ -227,7 +232,11 @@ Related SEP: [#1577](https://github.com/modelcontextprotocol/modelcontextprotoco
 
 ### Tasks (SEP-2663)
 
-Long-running operations with lifecycle management - progress tracking, cancellation, and status updates for operations spanning multiple requests. [SEP-2663](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2663) (final, 2026-05-15) supersedes the earlier SEP-1686 proposal: Tasks moved out of the core `2025-11-25` spec (the experimental `tasks` feature there is removed) into the official `io.modelcontextprotocol/tasks` extension. A server may answer a `tools/call` with an async task handle instead of a final result; the client **polls** via `tasks/get` and `tasks/update` (`tasks/cancel` to abort). The draft redesign drops the blocking `tasks/result` and `tasks/list` methods and allows servers to return task handles unsolicited.
+Long-running operations with lifecycle management - progress tracking, cancellation, and status updates for operations spanning multiple requests. [SEP-2663](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2663) (final, 2026-05-15) supersedes the earlier SEP-1686 proposal: Tasks moved out of the core `2025-11-25` spec (the experimental `tasks` feature there is removed) into the official `io.modelcontextprotocol/tasks` extension. A server may answer a `tools/call` with an async task handle instead of a final result; the client **polls** via `tasks/get` and `tasks/update` (`tasks/cancel` to abort). The redesign drops the blocking `tasks/result` and `tasks/list` methods and allows servers to return task handles unsolicited.
+
+**Canonical source**: the [ext-tasks repo](https://github.com/modelcontextprotocol/ext-tasks) holds the full specification, with docs at [/docs/extensions/tasks/overview](https://modelcontextprotocol.io/docs/extensions/tasks/overview). (Its README still carries an "experimental / not an official extension" banner that contradicts the shipped spec and docs site - treat the banner as stale.)
+
+In TypeScript SDK v2 the entire 2025-era task wire vocabulary is `@deprecated` - importable for backwards compatibility, but excluded from the typed method maps (`RequestMethod`, `RequestTypeMap`, `ResultTypeMap`, `NotificationTypeMap` carry no `tasks/*` entries), and removable at the major version that drops 2025-era support.
 
 ### Progress
 
