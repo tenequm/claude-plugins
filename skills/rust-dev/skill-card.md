@@ -48,7 +48,7 @@ Mitigation: The skill frames these as new-project defaults; for existing project
 ## References
 
 - The Rust Book: https://doc.rust-lang.org/book/
-- Tracked upstream versions: rust@1.95.0, axum@0.8.9, reqwest@0.13.3, sqlx@0.9.0, jiff@0.2.24, kache@0.9.0, dist@0.32.0, release-plz@0.5
+- Tracked upstream versions: rust@1.95.0, axum@0.8.9, reqwest@0.13.3, sqlx@0.9.0, jiff@0.2.24, kache@0.9.0, dist@0.32.0, release-plz-action@0.5.131
 - blessed.rs crate guide: https://blessed.rs/crates
 - Source: https://github.com/tenequm/skills/tree/main/skills/rust-dev
 
@@ -64,7 +64,7 @@ Other properties: Setup commands download toolchains and dependencies from the n
 
 ## Skill Version
 
-0.4.1
+0.4.2
 
 ## Ethical Considerations
 

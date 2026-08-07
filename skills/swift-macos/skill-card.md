@@ -65,7 +65,7 @@ Other properties: Reference-only by default; build, test, notarization, and capt
 
 ## Skill Version
 
-0.7.0
+0.7.1
 
 ## Ethical Considerations
 

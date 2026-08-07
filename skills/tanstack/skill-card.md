@@ -65,7 +65,7 @@ Other properties: Install commands fetch packages from npm; generated server fun
 
 ## Skill Version
 
-0.4.2
+0.4.3
 
 ## Ethical Considerations
 

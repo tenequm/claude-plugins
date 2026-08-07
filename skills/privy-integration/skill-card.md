@@ -64,7 +64,7 @@ Other properties: Produced code performs authentication and can sign on-chain tr
 
 ## Skill Version
 
-0.4.2
+0.4.3
 
 ## Ethical Considerations
 

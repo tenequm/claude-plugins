@@ -69,7 +69,7 @@ Other properties: Executing the produced code moves real funds on mainnet rails 
 
 ## Skill Version
 
-0.9.0
+0.10.0
 
 ## Ethical Considerations
 

@@ -66,11 +66,11 @@ Output format: Markdown analysis and TypeScript code snippets
 
 Output parameters: Not applicable
 
-Other properties: Reference-only skill; it executes nothing itself. Includes references/ deep dives on transports, schemas, errors, security/auth, v2 migration, MCP Apps, extensions/registry, and the released 2026-07-28 spec revision.
+Other properties: Reference-only skill; it executes nothing itself. Includes references/ deep dives on transports, schemas, errors, security/auth, known SDK bugs, v2 migration, MCP Apps, extensions/registry, and the released 2026-07-28 spec revision.
 
 ## Skill Version
 
-1.0.0
+1.1.0
 
 ## Ethical Considerations
 

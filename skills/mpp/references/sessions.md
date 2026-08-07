@@ -12,7 +12,7 @@ Since mppx 0.7.0, `tempo.session()` is the **v2** flow built on the TIP-1034 ses
 
 - **Default:** `tempo.session()` = v2; `tempo.sessionLegacy()` = v1, deprecated.
 - **Interop cliff:** a v2-expecting client rejects a v1 session challenge (it lacks `methodDetails.sessionProtocol: "v2"`) and falls back to the charge path. A server still on old mppx serving v1 sessions silently denies newer clients their working path - keep client and server on matching flows, or advertise v2.
-- **Refunds:** v2 reserves funds in the channel without immediately claiming them, so unclaimed reserved funds are refunded by default. v1 refunds by closing the channel (unspent escrow returned to the client).
+- **Refunds:** MPP defines no refund protocol - a charge is refunded out-of-protocol by sending funds back to the payer. For sessions, v2 reserves funds in the channel without immediately claiming them, so unclaimed reserved funds are refunded by default. v1 refunds by closing the channel (unspent escrow returned to the client).
 - **Where the funds live:** v2 uses a fixed TIP-20 channel precompile (`tip20ChannelEscrow`) at the same address on mainnet (4217) and Moderato testnet (42431). v1 used a deployed `TempoStreamChannel` contract per network.
 
 Two client entry points:
@@ -275,10 +275,6 @@ Session receipts differ from charge receipts:
 - `txHash` is only populated once settlement lands on-chain, so it is absent on ordinary voucher receipts.
 - Calling `close()` returns a receipt that includes the `txHash` of the settlement transaction.
 
-## Escrow Contracts (Sessions v1)
-
-Everything from here to the end of the escrow section describes the **v1** contract-backed flow used by `tempo.sessionLegacy`. Sessions v2 replaces it with the TIP-20 channel precompile and does not expose these operations; the payer-initiated recovery path below still matters for channels opened under v1.
-
 ## Store Backends
 
 Sessions require state storage for channel data. Available backends:
@@ -286,13 +282,14 @@ Sessions require state storage for channel data. Available backends:
 | Backend | Usage | Notes |
 |---------|-------|-------|
 | `Store.memory()` | In-memory | Development only, state lost on restart |
+| `Store.redis()` | Redis client | Self-hosted or managed Redis |
 | `Store.cloudflare()` | Cloudflare KV | Edge-compatible |
 | `Store.upstash()` | Upstash Redis | Serverless Redis |
 | Custom | Implement interface | Requires async `get`, `set`, `delete` methods |
 
-## Escrow Contract (v1)
+## Escrow Contracts (Sessions v1)
 
-The `TempoStreamChannel` on-chain escrow manages deposits, settlements, and refunds for **Sessions v1**.
+Everything in this section (through Payer-Initiated Recovery) describes the **v1** contract-backed flow used by `tempo.sessionLegacy`. Sessions v2 replaces it with the TIP-20 channel precompile and does not expose these operations; the payer-initiated recovery path below still matters for channels opened under v1. The `TempoStreamChannel` on-chain escrow manages deposits, settlements, and refunds for v1.
 
 ### Deployed Addresses
 

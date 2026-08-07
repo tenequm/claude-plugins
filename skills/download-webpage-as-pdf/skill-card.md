@@ -68,7 +68,7 @@ Other properties: Side effects are browser session usage and files written to di
 
 ## Skill Version
 
-0.1.5
+0.1.6
 
 ## Ethical Considerations
 

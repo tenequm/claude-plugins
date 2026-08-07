@@ -1,8 +1,8 @@
 ---
 name: audio-quality-check
-description: Analyze audio recording quality - echo detection, loudness, speech intelligibility, SNR, spectral analysis. Use when the user wants to check a recording's quality, detect echo or duplication in audio files, measure speech clarity, compare original vs processed audio, diagnose why a recording sounds bad, or analyze audio tracks from Blackbox or any call recording app. Triggers on audio quality, recording analysis, echo detection, check recording, sound quality, analyze audio, speech quality, PESQ, STOI, loudness, SNR, audio diagnostics, recording sounds bad, echo in recording, audio duplication.
+description: Analyzes audio recording quality - echo detection, loudness, speech intelligibility, SNR, and spectral analysis. Use when the user wants to check a recording's quality, detect echo or duplication, measure speech clarity, compare original vs processed audio, or diagnose why a recording sounds bad, including tracks from Blackbox or any call recording app.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/audio-quality-check
     emoji: "🎧"
@@ -26,14 +26,14 @@ Comprehensive audio quality analysis for call recordings. Handles dual-track M4A
 Run the bundled analysis script on a recording directory:
 
 ```bash
-python <skill-path>/scripts/analyze_recording.py "/path/to/recording/directory"
+python ${CLAUDE_SKILL_DIR}/scripts/analyze_recording.py "/path/to/recording/directory"
 ```
 
 Modes for focused analysis:
 ```bash
-python <skill-path>/scripts/analyze_recording.py /path --tracks   # track info only
-python <skill-path>/scripts/analyze_recording.py /path --echo     # echo detection only
-python <skill-path>/scripts/analyze_recording.py /path --quality  # quality metrics (skip echo)
+python ${CLAUDE_SKILL_DIR}/scripts/analyze_recording.py /path --tracks   # track info only
+python ${CLAUDE_SKILL_DIR}/scripts/analyze_recording.py /path --echo     # echo detection only
+python ${CLAUDE_SKILL_DIR}/scripts/analyze_recording.py /path --quality  # quality metrics (skip echo)
 ```
 
 For Blackbox recordings, the directory is typically:

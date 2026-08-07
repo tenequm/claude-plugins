@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-07
+
+### Removed
+
+- Git-tracked `.last-refresh` provenance file (stray artifact outside the documented skill layout; now gitignored).
+
 ## [0.11.0] - 2026-07-30
 
 ### Added

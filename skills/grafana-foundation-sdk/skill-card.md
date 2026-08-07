@@ -65,7 +65,7 @@ Other properties: Targets dashboard schema v1; schema v2 (dashboardv2beta1) is n
 
 ## Skill Version
 
-0.2.2
+0.2.3
 
 ## Ethical Considerations
 

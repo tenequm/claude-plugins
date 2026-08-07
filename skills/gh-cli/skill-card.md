@@ -64,7 +64,7 @@ Other properties: Read operations are side-effect free; PR/issue/release command
 
 ## Skill Version
 
-1.3.1
+1.3.2
 
 ## Ethical Considerations
 

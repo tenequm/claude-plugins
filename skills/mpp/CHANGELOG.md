@@ -7,6 +7,19 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-07
+
+### Changed
+
+- Condensed SKILL.md from ~30.6k to ~23.6k chars, removing only duplication: dropped the "When to Use" section, the ASCII sequence diagram, the Tempo token-address table (placeholders now explained in one line), the `Fetch.*` / proxy-endpoint / subpath-export / `Html.init` enumerations, and the `Proxy.create` boilerplate - each fact stays in the matching reference file. Stellar `channel` and NEAR Intents caveats moved into the payment-methods table; the settlement obligation now lives only in Production Gotchas.
+- Trimmed the frontmatter description to WHAT + WHEN (no trigger-keyword dump) and `metadata.openclaw.envVars` to the six genuine MPP variables (CLI-only, alias, Privy, and upstream provider keys are documented in the references instead).
+- Added inline pointers to `references/stripe-method.md`, `references/lightning-method.md`, and `references/subscriptions.md` from the payment-methods and intents tables.
+
+### Fixed
+
+- `references/sessions.md`: added the missing `Store.redis()` row to the Store Backends table (the file's own WebSocket example uses it), and moved the general Store Backends section out of the "Escrow Contracts (Sessions v1)" block so v1-only content is properly scoped.
+- `references/typescript-sdk.md`: the `mppx/html` row now documents the `Html.init(methodName)` page context fields.
+
 ## [0.9.0] - 2026-07-30
 
 ### Fixed

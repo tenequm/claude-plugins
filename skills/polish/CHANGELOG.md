@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-08-07
+
+### Fixed
+
+- Agent 4 routed out-of-scope findings to `/review`; the bundled review skill is `/code-review`.
+
 ## [2.4.1] - 2026-07-22
 
 ### Added

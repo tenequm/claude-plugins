@@ -154,6 +154,8 @@ Two vectors:
 
 ### Stdio Config Command Injection
 
+Server-side, the ordinary rule applies: never interpolate tool input into a shell command (`child_process.exec` with unsanitized arguments produced [CVE-2025-53967](https://nvd.nist.gov/vuln/detail/CVE-2025-53967) in a shipped MCP server).
+
 OX Security disclosed (2026-04-15) a systemic command-injection design issue in MCP SDK stdio transports across all language SDKs: user-controlled input flows into `StdioServerParameters` (or its equivalents) without sanitization, enabling shell injection at server-spawn time. Anthropic classifies the behavior as "by design" - the SDK does not sanitize, by spec. Defensive responsibility lies with **clients and orchestrators**:
 
 - Treat any string fed to `command`, `args`, or `env` as adversarial input.

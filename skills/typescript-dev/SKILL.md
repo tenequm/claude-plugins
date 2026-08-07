@@ -1,8 +1,8 @@
 ---
 name: typescript-dev
-description: "Build full-stack TypeScript apps with Vite 8, React 19, Tailwind CSS v4, shadcn/ui, Biome, Vitest, and Hono. Covers the frontend (Vite/Rolldown build + dev server, type-safe React 19, strict TypeScript 6.0, Tailwind/shadcn styling, Biome lint/format, Vitest) and the Hono 4 backend/edge layer (routing, middleware, Zod validation, end-to-end type-safe RPC, OpenAPI, multi-runtime deploy). Use when setting up or working in a TypeScript project: configuring Vite, writing components, the React Compiler, Tailwind/shadcn, dev server/HMR, bundles, tests, lint/format/CI, or building a Hono API and wiring its RPC client to React. Triggers on vite, rolldown, react, tsx, typescript, tsconfig, react compiler, tailwind, shadcn, cva, biome, vitest, hmr, dev server, hono, hono rpc, hc client, cloudflare workers, edge api, zod validator, zod-openapi."
+description: "Builds full-stack TypeScript apps with Vite 8, React 19, Tailwind CSS v4, shadcn/ui, Biome, Vitest, and Hono. Covers the frontend (Vite/Rolldown build and dev server, type-safe React 19, strict TypeScript 6.0, Tailwind/shadcn styling, Biome lint/format, Vitest) and the Hono 4 backend/edge layer (routing, middleware, Zod validation, end-to-end type-safe RPC, OpenAPI, multi-runtime deploy). Use when setting up or working in a TypeScript project: configuring Vite, writing components, the React Compiler, Tailwind/shadcn, dev server and HMR, bundles, tests, lint/format/CI, or building a Hono API and wiring its RPC client to React."
 metadata:
-  version: "0.3.2"
+  version: "0.3.3"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/typescript-dev
     emoji: "🟦"

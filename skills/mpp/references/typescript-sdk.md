@@ -28,7 +28,7 @@ Authoritative `exports` keys from `mppx` 0.8.15:
 | `mppx/evm`, `mppx/evm/client`, `mppx/evm/server` | EVM (EIP-3009) payment method |
 | `mppx/x402` | x402 interop ("exact" flow compatibility) |
 | `mppx/tempo` | Tempo `Session` and `Ws` utilities (note: `tempo`/`Mppx` are NOT here - import those from `mppx/server` or `mppx/client`) |
-| `mppx/html` | Payment link UI customization (Config, Text, Theme types, `Html.init()`) |
+| `mppx/html` | Payment link UI customization (Config, Text, Theme types, plus `Html.init(methodName)`, which returns the page context: `challenge`, `config`, `error`, `formattedAmount`, `label`, `root`, `submit`, `text`, `theme`, `vars`) |
 | `mppx/discovery` | OpenAPI-first discovery tooling |
 | `mppx/validation` | Programmatic server validation (the engine behind `mppx validate`) |
 | `mppx/cli`, `mppx/cli/plugins` | CLI config + plugin authoring |

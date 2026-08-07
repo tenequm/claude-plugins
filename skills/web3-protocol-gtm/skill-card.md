@@ -62,7 +62,7 @@ Other properties: Eight references/ files hold deep-dive playbooks (solo founder
 
 ## Skill Version
 
-0.2.4
+0.2.5
 
 ## Ethical Considerations
 

@@ -4,6 +4,12 @@ All notable changes to this skill are documented here. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-08-07
+
+### Changed
+
+- Trimmed the frontmatter description from five sentences to three; the cut material (tool-agnostic triggering, the percollate alternative) already lives in the skill body.
+
 ## [0.1.5] - 2026-07-22
 
 ### Added

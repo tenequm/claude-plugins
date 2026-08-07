@@ -297,7 +297,7 @@ new DataqueryBuilder()
 import { DataqueryBuilder } from '@grafana/grafana-foundation-sdk/loki';
 
 new DataqueryBuilder()
-  .expr('{namespace="x402", app=~"$service"}')
+  .expr('{namespace="myapp", app=~"$service"}')
   .legendFormat('{{app}}')
   .refId('A')
   .maxLines(100)
@@ -307,8 +307,8 @@ new DataqueryBuilder()
 ```
 
 **Loki query types:**
-- Log query: `{namespace="x402", app="my-app"}` - returns log lines
-- Metric query: `count_over_time({namespace="x402"} [5m])` - returns time series
+- Log query: `{namespace="myapp", app="my-app"}` - returns log lines
+- Metric query: `count_over_time({namespace="myapp"} [5m])` - returns time series
 - Use `| json` for JSON parsing, `| unwrap field_name` for numeric extraction
 
 ---

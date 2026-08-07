@@ -63,7 +63,7 @@ Other properties: The 12-item audit checklist must pass before a generated comma
 
 ## Skill Version
 
-0.1.2
+0.1.3
 
 ## Ethical Considerations
 

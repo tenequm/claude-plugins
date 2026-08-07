@@ -25,9 +25,8 @@ ops/
     per-service.ts       # per-service dashboard generator
     package.json         # { "type": "module", "scripts": { "generate": "tsx generate.ts" } }
     tsconfig.json
-  helmfile/
-    charts/monitoring-deps/
-      dashboards/        # generated JSON files go here
+  deploy/
+    dashboards/        # generated JSON files go here
 ```
 
 Or for a single dashboard, a simple standalone script works fine:
@@ -187,7 +186,7 @@ function buildREDDashboard(namespace: string, metricPrefix: string) {
 }
 
 // Generate
-const dashboard = buildREDDashboard('x402', 'http_server');
+const dashboard = buildREDDashboard('myapp', 'http_server');
 console.log(JSON.stringify(dashboard.build(), null, 2));
 ```
 
@@ -209,7 +208,7 @@ new LogsBuilder()
   .datasource(LOKI)
   .withTarget(
     new LokiQueryBuilder()
-      .expr('{namespace="x402", app=~"$service", level=~"$level"}')
+      .expr('{namespace="myapp", app=~"$service", level=~"$level"}')
       .refId('A')
   )
   .showTime(true)
@@ -230,22 +229,22 @@ new LogsBuilder()
 ```typescript
 // Count events over time
 new LokiQueryBuilder()
-  .expr('sum by (status)(count_over_time({namespace="x402", app=~"$service"} | event="request" [$__range]))')
+  .expr('sum by (status)(count_over_time({namespace="myapp", app=~"$service"} | event="request" [$__range]))')
   .legendFormat('{{status}}')
 
 // Sum a numeric field extracted from logs
 new LokiQueryBuilder()
-  .expr('sum by (network)(sum_over_time({namespace="x402"} | event="settlement" | success="true" | unwrap amount_usd [$__range]))')
+  .expr('sum by (network)(sum_over_time({namespace="myapp"} | event="settlement" | success="true" | unwrap amount_usd [$__range]))')
   .legendFormat('{{network}}')
 
 // Average a numeric field
 new LokiQueryBuilder()
-  .expr('avg(avg_over_time({namespace="x402", app=~"$service"} | event="request" | status="200" | unwrap duration_ms | __error__="" [$__auto]))')
+  .expr('avg(avg_over_time({namespace="myapp", app=~"$service"} | event="request" | status="200" | unwrap duration_ms | __error__="" [$__auto]))')
   .legendFormat('avg latency')
 
 // Top-K from logs
 new LokiQueryBuilder()
-  .expr('topk(10, sum by (buyer_wallet)(count_over_time({namespace="x402"} | event="request" | buyer_wallet!="" [$__range])))')
+  .expr('topk(10, sum by (buyer_wallet)(count_over_time({namespace="myapp"} | event="request" | buyer_wallet!="" [$__range])))')
   .legendFormat('{{buyer_wallet}}')
 ```
 
@@ -259,7 +258,7 @@ new TableBuilder()
   .datasource(LOKI)
   .withTarget(
     new LokiQueryBuilder()
-      .expr('topk(10, sum by (buyer_wallet)(count_over_time({namespace="x402"} | event="request" | buyer_wallet!="" [$__range])))')
+      .expr('topk(10, sum by (buyer_wallet)(count_over_time({namespace="myapp"} | event="request" | buyer_wallet!="" [$__range])))')
       .refId('A')
   )
   .withTransformation({
@@ -317,7 +316,7 @@ const services = ['inference', 'twitter', 'github', 'web'];
 function buildServiceDashboard(service: string) {
   return new DashboardBuilder(`${service} - Detail`)
     .uid(`${service}-detail`)
-    .tags(['x402', service])
+    .tags(['myapp', service])
     .editable()
     .refresh('30s')
     .time({ from: 'now-1h', to: 'now' })
@@ -326,7 +325,7 @@ function buildServiceDashboard(service: string) {
       new StatBuilder()
         .title('Request Rate')
         .datasource(PROM)
-        .withTarget(pq(`sum(rate(http_server_duration_count{namespace="x402",job="${service}"}[5m]))`))
+        .withTarget(pq(`sum(rate(http_server_duration_count{namespace="myapp",job="${service}"}[5m]))`))
         .unit('reqps')
         .height(4).span(6)
     )
@@ -408,6 +407,6 @@ data:
 1. Edit the TypeScript generator in `ops/dashboards/`
 2. Run `pnpm generate` (or `tsx generate.ts`) to produce JSON in `dashboards/`
 3. Commit the generated JSON alongside the generator code
-4. Deploy with `helmfile sync` - the ConfigMap picks up the new JSON
+4. Deploy via your provisioning mechanism (e.g. sync the ConfigMap or drop into Grafana's provisioning directory)
 
 The `grafana_dashboard: "1"` label tells the Grafana sidecar to load the ConfigMap as a dashboard automatically.

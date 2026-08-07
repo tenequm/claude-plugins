@@ -1,8 +1,8 @@
 ---
 name: go-dev
-description: Opinionated Go development setup with golangci-lint v2 + gofumpt + gotestsum + golang-migrate + just. Use when creating new Go projects, setting up linting/formatting/testing, configuring CI/CD pipelines, writing Justfiles, or migrating from Makefile-only workflows. Triggers on "go project", "go mod init", "golangci-lint", "gofumpt", "gotestsum", "go test setup", "justfile go", "go migration", "go ci pipeline", "go lint setup", "go fmt", "go coverage".
+description: Opinionated Go development setup with golangci-lint v2, gofumpt, gotestsum, golang-migrate, and just. Use when creating a new Go project, setting up linting, formatting, testing, or coverage, configuring a Go CI pipeline, writing a Justfile, wiring database migrations, or migrating from a Makefile-only workflow.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/go-dev
     emoji: "🐹"
@@ -46,19 +46,16 @@ go mod init github.com/yourorg/myapp
 # 2. Scaffold directories
 mkdir -p cmd/myapp internal migrations
 
-# 3. Install tools
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-go install mvdan.cc/gofumpt@latest
-go install gotest.tools/gotestsum@latest
-go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-
-# 4. Track tools in go.mod (Go 1.24+)
+# 3. Track tools in go.mod (Go 1.24+ tool directive)
 go get -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 go get -tool mvdan.cc/gofumpt@latest
 go get -tool gotest.tools/gotestsum@latest
 
-# 5. Create config files (templates below)
-# 6. Run: just check
+# golang-migrate needs a build tag, so install it directly
+go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+# 4. Create config files (templates below)
+# 5. Run: just check
 ```
 
 ## .golangci.yml
@@ -180,7 +177,7 @@ fmt:
 # Check formatting without modifying (CI-safe)
 [group('quality')]
 fmt-check:
-    gofumpt -d . 2>&1 | (! grep -q '^') || (gofumpt -l . && exit 1)
+    golangci-lint fmt --diff ./...
 
 # Run linter
 [group('quality')]

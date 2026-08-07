@@ -2,7 +2,7 @@
 name: deep-research-glim
 description: Conducts deep, multi-angle research using glim MCP tools and parallel subagents. Use for deep research, competitive landscape analysis, strategic intelligence, or /deep-research-glim [topic]. Triggers - deep research, deep dive on, competitive landscape, strategic intelligence, multi-source synthesis.
 metadata:
-  version: "0.2.6"
+  version: "0.2.7"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/deep-research-glim
     emoji: "🔭"
@@ -39,7 +39,7 @@ Before spawning anything, internally commit to a one-paragraph plan covering:
 
 ### Stage 1: Multi-Angle Discovery (always 3 parallel subagents)
 
-Spawn three subagents in parallel via the Task tool (`subagent_type=general-purpose`, `run_in_background=true`). Each gets a distinct angle.
+Spawn three subagents in parallel via the Agent tool (`subagent_type=general-purpose`, `run_in_background=true`). Each gets a distinct angle.
 
 #### Subagent 1A: Broad Overview
 
@@ -48,7 +48,7 @@ Mission: establish baseline; identify themes, key players, dominant narrative.
 Searches: 2-3 broad queries via glim web search.
 
 Sample queries:
-- `"[topic] overview 2025-2026"`
+- `"[topic] overview [current year]"`
 - `"[topic] comprehensive guide"`
 - `"what is [topic] how it works"`
 
@@ -79,7 +79,7 @@ Searches: 2-3 queries via glim web search. Reddit and X are often where contrari
 Sample queries:
 - `"[topic] contrarian opinions different perspective"`
 - `"[topic] lesser-known strategies hidden tactics"`
-- `"[topic] emerging trends future directions 2026"`
+- `"[topic] emerging trends future directions"`
 
 Returns: orthogonal insights, contrarian views, emerging signals.
 
@@ -99,7 +99,7 @@ After Stage 1 returns, evaluate the aggregated findings. Identify the critical s
 - Reddit threads with high-signal discussion
 - YouTube videos whose transcripts hold unique content
 
-Decide N based on what Stage 1 surfaced. N is your judgment - could be 2, could be 6. Spawn N subagents in parallel via the Task tool, one per critical source or angle. Each uses the appropriate glim detail primitive (web crawl, GitHub get, Reddit post, Twitter tweet, YouTube subtitles) for full-content extraction.
+Decide N based on what Stage 1 surfaced. N is your judgment - could be 2, could be 6. Spawn N subagents in parallel via the Agent tool, one per critical source or angle. Each uses the appropriate glim detail primitive (web crawl, GitHub get, Reddit post, Twitter tweet, YouTube subtitles) for full-content extraction.
 
 Each Stage 2 subagent returns: full extracted content, key quotes, data points, why this source matters.
 

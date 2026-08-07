@@ -7,6 +7,17 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-07
+
+### Changed
+
+- Trimmed the frontmatter description to what-plus-when; dropped the trailing 10-item trigger-keyword list.
+
+### Fixed
+
+- The Justfile `check` recipe ran `ruff check --fix && ruff format`, mutating files and duplicating `fix`. It is now non-mutating (`ruff check`, `ruff format --check`) and mirrors the CI block.
+- CI example used `actions/checkout@v4`; bumped to `@v6`.
+
 ## [0.2.3] - 2026-07-22
 
 ### Added

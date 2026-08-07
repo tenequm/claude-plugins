@@ -50,3 +50,4 @@ ENV/
 
 # Release automation artifacts
 dist/
+.last-refresh

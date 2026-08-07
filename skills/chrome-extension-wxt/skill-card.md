@@ -66,7 +66,7 @@ Other properties: Dev and build commands run npm scripts with side effects on th
 
 ## Skill Version
 
-1.1.2
+1.1.3
 
 ## Ethical Considerations
 

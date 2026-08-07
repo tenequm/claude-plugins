@@ -64,7 +64,7 @@ Other properties: Side effect on confirmation only - posts a review to the targe
 
 ## Skill Version
 
-0.4.0
+0.4.1
 
 ## Ethical Considerations
 

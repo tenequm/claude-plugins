@@ -8,7 +8,9 @@ Complete Zod-to-JSON-Schema conversion rules, known breakage, outputSchema, and 
 - [What Breaks](#what-breaks)
 - [outputSchema and structuredContent](#outputschema-and-structuredcontent)
 - [Non-Text Content Types](#non-text-content-types)
+- [Other Tool-Definition Fields](#other-tool-definition-fields)
 - [Tool Design Patterns](#tool-design-patterns)
+- [Other Server Primitives](#other-server-primitives)
 
 ## Zod Schema Conversion
 
@@ -226,7 +228,7 @@ server.registerTool("get_weather", {
 - Client SHOULD validate `structuredContent` against the schema
 - Server SHOULD also include serialized JSON in `content` for backward compatibility
 - "Soft contracts" - tools SHOULD produce schema-compliant outputs but the spec acknowledges AI-generated outputs may vary
-- **No precedence rule.** The spec never defines which field a client prefers when both `content` and `structuredContent` are present - left client-defined, which is why clients diverge (see SKILL.md "Tool Result Delivery: content vs structuredContent" for the empirical Claude Code 2.1.165 matrix, the cross-client table, and the maintainer confirmation).
+- **No precedence rule.** The spec never defines which field a client prefers when both `content` and `structuredContent` are present - left client-defined, which is why clients diverge; a clarification is in flight via SEP-1624 -> SEP-2200 (see SKILL.md "Tool Result Delivery: content vs structuredContent" for the empirical Claude Code 2.1.165 matrix, the cross-client table, and the maintainer confirmation). VS Code's maintainers frame `structuredContent` as PTC-only and not model-facing ([microsoft/vscode#290063](https://github.com/microsoft/vscode/issues/290063)); other clients disagree, so a portable server cannot rely on it either way.
 
 ### Token Reality (not a free channel)
 
@@ -313,6 +315,12 @@ Don't inline full-resolution base64 by default - it blows client result caps (se
 
 1. **`ImageContent` block with a server-downscaled preview** (~1024px JPEG) - vision-capable clients see the image directly.
 2. **Text block with metadata plus a URL to the untouched original** - the universal deliverable for clients whose size caps drop the image block.
+
+## Other Tool-Definition Fields
+
+- **`icons`** ([SEP-973](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)): tools, resources, prompts, and implementations can carry `icons: [{ src, mimeType, sizes }]` for client UI display.
+- **`listChanged` capability + `notifications/tools/list_changed`**: declare `tools: { listChanged: true }` and emit the notification when the tool set changes at runtime - required plumbing if you adopt the dynamic tool loading strategy from SKILL.md "Token Bloat Mitigation". On 2026-07-28 the client opts into delivery via the `subscriptions/listen` filter.
+- **`execution.taskSupport`** (**2025-11-25 only**): per-tool negotiation of task-augmented execution - `"forbidden"` (default), `"optional"`, `"required"`. **Removed in 2026-07-28** along with core tasks; the field is absent from that revision's schema. Tasks now live in the `io.modelcontextprotocol/tasks` extension.
 
 ## Tool Design Patterns
 
@@ -424,4 +432,27 @@ server.tool("list_models", "List available models", {
   type: "object" as const,
   additionalProperties: false,
 }, handler);
+```
+
+## Other Server Primitives
+
+Beyond tools, the spec (2025-11-25) defines primitives a production server often needs. All are optional capabilities negotiated at initialization; a server that omits them still conforms.
+
+| Primitive | Methods | When you need it |
+|-----------|---------|------------------|
+| **Prompts** | `prompts/list`, `prompts/get` (`registerPrompt`) | Reusable, parameterized prompt templates users invoke by name (slash-commands, canned workflows). Args are completable. |
+| **Resources** | `resources/list`, `resources/read` (`server.resource(name, uri, config, readCallback)`) | Documentation or structured data exposed by URI - a `docs://` scheme is the common convention for guides shipped alongside tools. |
+| **Resource Templates** | `resources/templates/list` (RFC 6570 URI templates) | Parameterized resources - `docs://{id}` instead of enumerating every static URI. Template variables are completable. |
+| **Pagination** | opaque `cursor` param + `nextCursor` in result, on every `*/list` | Large tool/resource/prompt catalogs. The cursor is opaque - never parse or synthesize it; loop until `nextCursor` is absent. Distinct from in-tool `offset`/`limit` args. |
+| **Completions** | `completion/complete` | Argument autocomplete for prompt args and resource-template variables. Return ranked candidates with `hasMore`/`total` hints. |
+| **Cancellation** | `notifications/cancelled` | Client aborts an in-flight long request by id. Honor it via the handler's abort signal (`extra.signal` v1 / `ctx.mcpReq.signal` v2) - stop work, release resources. |
+
+```typescript
+server.resource("search-operators", "docs://search-operators", {
+  title: "Search Operators Guide",
+  description: "Supported search operators and syntax",
+  mimeType: "text/markdown",
+}, async () => ({
+  contents: [{ uri: "docs://search-operators", text: operatorsMarkdown }],
+}));
 ```

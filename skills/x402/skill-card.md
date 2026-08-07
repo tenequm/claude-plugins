@@ -65,7 +65,7 @@ Other properties: Generated code, when run by the user with funded keys, initiat
 
 ## Skill Version
 
-0.11.0
+0.11.1
 
 ## Ethical Considerations
 

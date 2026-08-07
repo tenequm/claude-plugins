@@ -65,7 +65,7 @@ Other properties: Analysis is read-only with respect to the input audio; tempora
 
 ## Skill Version
 
-0.1.2
+0.1.3
 
 ## Ethical Considerations
 

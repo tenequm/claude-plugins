@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-07
+
+### Fixed
+
+- The documentation URL table listed `llms.txt` as the full docs index, contradicting the SDK section. It now points at `llms-full.txt` (`llms.txt` only points to the skill installer).
+
 ## [0.4.2] - 2026-07-22
 
 ### Added

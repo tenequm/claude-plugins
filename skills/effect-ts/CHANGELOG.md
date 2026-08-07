@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-07
+
+### Changed
+
+- Rewrote the frontmatter description: dropped the "Comprehensive" opener and the 14-subsystem enumeration, folded the distinguishing import specifiers into a natural clause, and removed the trailing trigger dump.
+
 ## [0.6.2] - 2026-07-22
 
 ### Added

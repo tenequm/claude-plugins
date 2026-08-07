@@ -1,8 +1,8 @@
 ---
 name: reset-context-contamination
-description: Discard the accumulated drafts and framings from this thread and re-derive the task from a clean problem statement.
+description: Discards the accumulated drafts and framings from this thread and re-derives the task from a clean problem statement. Use when the user says the thread is contaminated, that the conversation is going in circles, or that they want a fresh take, or when they invoke /reset-context-contamination.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/reset-context-contamination
     emoji: "🧹"

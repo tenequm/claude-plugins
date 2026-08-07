@@ -64,7 +64,7 @@ Other properties: Runs the project's validation command (may fix lint/type error
 
 ## Skill Version
 
-2.4.1
+2.4.2
 
 ## Ethical Considerations
 

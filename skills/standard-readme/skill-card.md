@@ -58,7 +58,7 @@ Other properties: Write mode overwrites README.md only when the user asks for th
 
 ## Skill Version
 
-0.1.2
+0.1.3
 
 ## Ethical Considerations
 

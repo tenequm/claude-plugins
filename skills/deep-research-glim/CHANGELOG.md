@@ -7,6 +7,13 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-08-07
+
+### Fixed
+
+- Subagent spawning referred to "the Task tool"; renamed to "the Agent tool" to match the current tool name.
+- Sample queries hardcoded the years 2025-2026 and 2026; replaced with a `[current year]` placeholder or dropped so the queries do not go stale.
+
 ## [0.2.6] - 2026-07-22
 
 ### Added

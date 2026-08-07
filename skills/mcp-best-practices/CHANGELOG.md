@@ -7,7 +7,24 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-08-07
+## [1.1.0] - 2026-08-07
+
+### Added
+- New `references/sdk-bugs.md` holding the full Known SDK Bugs table (severity, status, workaround), including the `z.transform()` row that was previously only in the schema guide.
+- `references/spec-2026-07-28.md`: "Stateful Tools: Handles Instead of Sessions" (the four handle design rules) and "Other Removals and Loosenings" (`ping`/`logging/setLevel`/`notifications/roots/list_changed` removal, SSE resumability removal, elicitation-completion removal, `execution.taskSupport` removal, JSON Schema loosening, OTel trace context, the auth changes, and the conformance-suite SEP gate).
+- `references/tool-schema-guide.md`: "Other Tool-Definition Fields" (`icons`, `listChanged`, `execution.taskSupport`) and "Other Server Primitives" (prompts, resources with the `docs://` example, resource templates, pagination, completions, cancellation).
+
+### Changed
+- SKILL.md condensed from ~43.9k to ~29.4k characters with no loss of substance - duplicated matrices, doc restatement, and reference-grade detail were compressed or relocated. Untouched: the empirically-tested Claude Code result-delivery matrix and cross-client table, Quick Reference, The Two Eras, Transport Decision, the stateless pattern, `registerTool()`, annotations, token bloat, result-size budgets, the threat table core, and the v2 migration summary.
+- "Spec 2026-07-28" reduced from ten bullets to the four that change a decision today (stateless/sessionless, `server/discover` as a server MUST, the Roots/Sampling/Logging/HTTP+SSE deprecations, and application error codes outside `-32768..-32000`); the rest is delegated to the reference.
+- "Known SDK Bugs" is now a four-item must-know list (v1 union defect, the `>= 1.26.0` floor for CVE-2026-25536, register-before-connect, AJV strict extras) pointing at `references/sdk-bugs.md`.
+- Framework Integration replaced its per-framework snippets with prose naming the `hono`/`express` packages and the Workers `preloadSchemas()` note, pointing at `transport-patterns.md`.
+- Extensions collapsed to identifier format, per-request negotiation on 2026-07-28, the four-capability table, and pointers.
+
+### Removed
+- **"Module-Level Caching" section.** Its example used the v1 positional `server.tool()` API that the same document describes as removed in v2 - a self-contradiction - and its hoist list already lives in "Stateless Pattern", where it is now a single sentence.
+- Standalone "Other Server Primitives", "Other Tool-Definition Fields", "Resource Registration", and "Beyond Text: Content Types" sections (relocated to references; the pagination rule, `docs://` convention, and content-type pointer stay inline).
+- Generic security bullets duplicated from ordinary web-service hygiene, the command-injection and SSRF threat rows (kept as a one-line hygiene note), and the VS Code maintainer quote (the cross-client matrix already carries the behavior).
 
 ### Added
 - New `references/spec-2026-07-28.md` covering the released revision in full: per-request `_meta` identity keys (`protocolVersion`, `clientCapabilities`, `clientInfo`, `serverInfo`), per-request `io.modelcontextprotocol/logLevel`, the `subscriptions/listen` notification filter (`toolsListChanged`/`promptsListChanged`/`resourcesListChanged`/`resourceSubscriptions`) plus `subscriptionId` tagging, `requestState`, `Mcp-Method`/`Mcp-Name` with the Base64 sentinel encoding format, `DiscoverResult`, the cacheable-result set, the error-code allocation policy, and the deprecation table.

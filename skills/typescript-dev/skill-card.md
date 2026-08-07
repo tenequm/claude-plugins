@@ -58,7 +58,7 @@ Other properties: SKILL.md is the cross-cutting layer; eight references/ files h
 
 ## Skill Version
 
-0.3.2
+0.3.3
 
 ## Ethical Considerations
 

@@ -1,8 +1,8 @@
 ---
 name: swift-macos
-description: Comprehensive macOS app development with Swift 6.3, SwiftUI, SwiftData, Swift Concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, and app distribution. Use when building native Mac apps, implementing windows/scenes/navigation/menus/toolbars, SwiftData models and queries, modern concurrency, on-device AI, testing, screen/audio capture, menu bar apps, AppKit bridges, login items, process monitoring, or App Store and Developer ID distribution. Triggers on macOS app, SwiftUI macOS, SwiftData, Swift concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, screen capture, screen recording, AVFoundation, MenuBarExtra, NSViewRepresentable, notarize, login item, and process monitoring.
+description: Covers macOS app development with Swift 6.3, SwiftUI, SwiftData, Swift Concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, and app distribution. Use when building native Mac apps - windows, scenes, navigation, menus and toolbars, SwiftData models and queries, modern concurrency, on-device AI, testing, screen and audio capture, MenuBarExtra apps, AppKit bridges, login items, process monitoring, or App Store and Developer ID notarization.
 metadata:
-  version: "0.7.0"
+  version: "0.7.1"
   upstream: "swift@6.3.3, xcode@26.6, macos@26.6"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/swift-macos

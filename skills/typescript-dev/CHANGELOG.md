@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-07
+
+### Changed
+
+- Trimmed the frontmatter description to what-plus-when; dropped the trailing 20-term trigger-keyword sentence.
+
 ## [0.3.2] - 2026-07-22
 
 ### Added

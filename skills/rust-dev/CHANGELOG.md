@@ -7,6 +7,18 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-07
+
+### Changed
+
+- Trimmed the frontmatter description to what-plus-when; dropped the trailing trigger-keyword enumeration (semantic matching makes it redundant).
+
+### Fixed
+
+- `metadata.upstream` pinned the floating series `release-plz@0.5`; now tracks the concrete GitHub Action release `release-plz-action@0.5.131` (the artifact references/releasing.md actually uses).
+
+Verified against: release-plz-action@0.5.131
+
 ## [0.4.1] - 2026-07-22
 
 ### Added

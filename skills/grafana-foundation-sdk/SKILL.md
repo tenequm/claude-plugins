@@ -2,7 +2,7 @@
 name: grafana-foundation-sdk
 description: Build Grafana dashboards as code with the grafana-foundation-sdk typed builders (TypeScript or Go). Use when creating, modifying, or generating Grafana dashboard JSON programmatically, converting hand-written dashboard JSON to typed code, building monitoring dashboards, or working with Prometheus/Loki queries in dashboards.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   upstream: "@grafana/grafana-foundation-sdk@0.0.16, github.com/grafana/grafana-foundation-sdk/go@0.0.16"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/grafana-foundation-sdk
@@ -165,7 +165,7 @@ function statPanel(title: string, expr: string, opts?: { unit?: string; decimals
 // Query variable - populated from Prometheus labels
 new QueryVariableBuilder('service')
   .label('Service')
-  .query('label_values(http_server_duration_count{namespace="x402"}, job)')
+  .query('label_values(http_server_duration_count{namespace="myapp"}, job)')
   .datasource({ type: 'prometheus', uid: 'prometheus' })
   .refresh(2)  // 1=on dashboard load, 2=on time range change
   .includeAll(true)
@@ -243,12 +243,12 @@ import { DataqueryBuilder as LokiQueryBuilder } from '@grafana/grafana-foundatio
 
 // Log query
 new LokiQueryBuilder()
-  .expr('{namespace="x402", app=~"$service", level=~"$level"}')
+  .expr('{namespace="myapp", app=~"$service", level=~"$level"}')
   .refId('A')
 
 // Metric query from logs
 new LokiQueryBuilder()
-  .expr('sum by (buyer_wallet)(count_over_time({namespace="x402"} | event="request" [$__range]))')
+  .expr('sum by (buyer_wallet)(count_over_time({namespace="myapp"} | event="request" [$__range]))')
   .legendFormat('{{buyer_wallet}}')
   .refId('A')
 ```
@@ -330,17 +330,6 @@ These are sharp edges discovered from real usage and open issues on the SDK repo
 12. **Builders are only type-checked if wired into a tsconfig** - The SDK gives compile-time safety only when the generator file is actually type-checked. A generator sitting under a non-package directory (e.g. a Helm chart dir) that no `tsconfig` includes is silently unchecked, so type errors surface only at `.build()` runtime. Also: the SDK's output targets ES2024/`bundler` module resolution, which an older global `tsc` chokes on - run the project-local compiler (`npx tsc`), not a stale global one.
 
 13. **Regenerate JSON after every generator edit** - The deployed dashboard is the generated JSON, not the `.ts`/`.go` source. Edit the generator, re-run it, and commit the regenerated JSON together; never hand-edit the generated JSON (the next regen silently overwrites it). A repo rule ("never edit the dashboard JSON directly") is worth adding.
-
-## Project-Specific Context
-
-In this project, dashboards are provisioned as Kubernetes ConfigMaps via the monitoring-deps Helm chart:
-- Dashboard JSON files live in `ops/helmfile-infra/charts/monitoring-deps/dashboards/`
-- `templates/dashboards.yaml` wraps each JSON file into a ConfigMap with `grafana_dashboard: "1"` label
-- Data sources: Prometheus (`uid: "prometheus"`) and Loki (`uid: "loki"`)
-- Standard namespace filter: `namespace="x402"`
-- Common template variables: `$service` (job selector), `$level` (log level)
-
-When generating dashboards for this project, output the JSON to the dashboards directory and ensure the ConfigMap template references it.
 
 ## Reference Files
 

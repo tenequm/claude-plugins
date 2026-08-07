@@ -1,14 +1,12 @@
 ---
 name: standard-readme
 description: >
-  Write or audit README files following the Standard Readme specification
-  (github.com/RichardLitt/standard-readme). Use this skill whenever the user asks
-  to create, write, rewrite, improve, audit, or fix a README - even if they don't
-  mention "standard readme" explicitly. Also trigger when the user says "add a
-  README", "write docs for this repo", "check my README", or anything about README
-  quality or structure.
+  Writes or audits README files following the Standard Readme specification
+  (github.com/RichardLitt/standard-readme). Use whenever the user asks to create,
+  write, rewrite, improve, audit, or fix a README, or asks about README quality or
+  structure - even if they never mention "standard readme" explicitly.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/standard-readme
     emoji: "📖"
@@ -122,13 +120,13 @@ H2 heading. Motivation, history, intellectual context. A `### See Also` subsecti
 
 H2 heading. Must contain a code block showing how to install.
 
-```markdown
+````markdown
 ## Install
 
 ```sh
 npm install my-package
 ```
-```
+````
 
 Add a `### Dependencies` subsection if there are unusual or manual dependencies. Consider an `### Updating` subsection for projects where upgrades need special steps.
 
@@ -140,7 +138,7 @@ H2 heading. Must contain a code block showing common usage.
 - Library: show import + basic usage
 - Both: include a `### CLI` subsection
 
-```markdown
+````markdown
 ## Usage
 
 ```js
@@ -148,7 +146,7 @@ import { convert } from 'my-package'
 
 const pdf = await convert('README.md', { style: 'github' })
 ```
-```
+````
 
 #### Extra Sections (optional)
 

@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-08-07
+
+### Removed
+
+- `references/index.md`, an orphaned stale scrape artifact never linked from SKILL.md that listed only 9 of the 14 reference files.
+
 ## [1.3.1] - 2026-07-22
 
 ### Added

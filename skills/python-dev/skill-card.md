@@ -66,7 +66,7 @@ Other properties: Commands invoke network-installing tools (uv add, pre-commit i
 
 ## Skill Version
 
-0.2.3
+0.2.4
 
 ## Ethical Considerations
 

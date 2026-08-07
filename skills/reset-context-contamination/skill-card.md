@@ -57,7 +57,7 @@ Other properties: May spawn a subagent or recommend ending the session; discards
 
 ## Skill Version
 
-0.1.1
+0.1.2
 
 ## Ethical Considerations
 

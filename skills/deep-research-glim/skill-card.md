@@ -62,7 +62,7 @@ Other properties: Spawns parallel background subagents; incurs per-call glim ser
 
 ## Skill Version
 
-0.2.6
+0.2.7
 
 ## Ethical Considerations
 

@@ -72,7 +72,7 @@ Other properties: Commands install Go tools into the local toolchain and may rew
 
 ## Skill Version
 
-0.2.2
+0.2.3
 
 ## Ethical Considerations
 

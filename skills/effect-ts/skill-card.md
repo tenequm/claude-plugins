@@ -59,7 +59,7 @@ Other properties: 20+ references/ files loaded per task via progressive disclosu
 
 ## Skill Version
 
-0.6.2
+0.6.3
 
 ## Ethical Considerations
 

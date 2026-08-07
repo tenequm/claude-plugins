@@ -1,8 +1,8 @@
 ---
 name: impactful-writing
-description: Write clear, emotionally resonant, and well-structured content that readers remember and act upon. Use when writing or editing any text—Twitter posts, articles, documentation, emails, comments, updates—for maximum clarity, engagement, and impact.
+description: Write clear, emotionally resonant, and well-structured content that readers remember and act upon. Use when writing or editing any text - Twitter posts, articles, documentation, emails, comments, updates - for maximum clarity, engagement, and impact.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/impactful-writing
     emoji: "✍️"
@@ -14,7 +14,7 @@ metadata:
 
 Transform any content into clear, memorable, and actionable text using research-backed principles that work across all platforms and contexts. This skill synthesizes 50+ years of readability research, neuroscience of memory, and platform engagement studies into practical techniques.
 
-**Core insight**: The same psychological principles drive engagement everywhere—clarity reduces cognitive load, specificity creates memory, and structure enables scanning. Master these universal patterns and apply them to any writing context.
+**Core insight**: The same psychological principles drive engagement everywhere - clarity reduces cognitive load, specificity creates memory, and structure enables scanning. Master these universal patterns and apply them to any writing context.
 
 ## When to Use This Skill
 
@@ -197,7 +197,7 @@ Opens with a question the reader wants answered:
 ### Statistic Hook
 Opens with surprising data:
 ```
-"90% of visitors who read your headline also read your CTA—yet most writers spend 10x more time on body copy."
+"90% of visitors who read your headline also read your CTA - yet most writers spend 10x more time on body copy."
 ```
 
 ### Story Hook
@@ -240,7 +240,7 @@ After: "The meeting started with our CEO apologizing. In 15 years, I'd never see
 Activates multiple brain regions:
 ```
 Before: "The code was messy."
-After: "The code sprawled like tangled Christmas lights—one pull and everything breaks."
+After: "The code sprawled like tangled Christmas lights - one pull and everything breaks."
 ```
 
 ## Common Anti-Patterns
@@ -300,7 +300,7 @@ Bridge: "Here's the monitoring setup that changed everything."
 
 ### 1-2-3 Structure
 
-For instructional content—simple, scannable, actionable:
+For instructional content - simple, scannable, actionable:
 
 ```
 1. The Problem: What's wrong and why it matters

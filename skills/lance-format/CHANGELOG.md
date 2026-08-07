@@ -7,6 +7,36 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-07
+
+### Changed
+- Consolidated the skill's structure. No upstream re-grounding: still `v11.0.0-beta.2`, and no
+  benchmark-verified figure was removed - every relocated fact is cited below.
+- `SKILL.md` 32,029 -> ~14.6k chars. The four "What's new in v9 / v9.1 / v10 / v11" sections
+  collapsed into a `Version landscape` table (one row per major, naming its breaking theme) plus
+  a compressed `The v11 delta`; all 66 PR citations were verified present in the reference files
+  before cutting. The 45-row docs-mirror file map became one row per directory with a file count
+  (the "Not mirrored" paragraph is unchanged, verbatim). The crate-workspace section, the
+  release-train prose, and `Navigating the reference` were compressed; the sparse
+  auto-selection deep dive was dropped in favour of the fuller treatment in section 3.1.
+- `references/lance-reference.md` (170,653 chars) split into five topic files, each with its own
+  table of contents: `format-file.md` (sections 1-4), `format-table.md` (5-10), `indexes.md`
+  (11-12), `ops.md` (13, 15, 16), `changelog-v7-v11.md` (14). `lance-reference.md` is now a stub
+  mapping the original 16 section numbers onto those files, so existing "see section N"
+  cross-references still resolve.
+- `references/performance.md` 69,077 -> ~38.6k chars, and gained a table of contents. Part A no
+  longer re-copies text that already exists byte-identically in `references/docs/`: the embedded
+  `guide/performance.md` copy, the full-text-search "Performance Tips", the JSON "Performance
+  Considerations", and the transaction "CreateIndex Compatibility" block are replaced by a
+  routing table pointing at the mirrored files and headings. The OpenTelemetry-metrics
+  subsection, which was the only content unique to the embedded copy, was relocated to its own
+  section in Part A. Both "Performance changes not in the guide" subsections and all of Part B
+  are unchanged.
+
+### Added
+- `references/maintenance.md` - the refresh workflow moved out of `SKILL.md`, extended with the
+  reference-file layout table.
+
 ## [0.13.0] - 2026-08-07
 
 ### Changed

@@ -62,7 +62,7 @@ Other properties: No side effects; the skill only shapes text the agent produces
 
 ## Skill Version
 
-0.1.2
+0.1.3
 
 ## Ethical Considerations
 

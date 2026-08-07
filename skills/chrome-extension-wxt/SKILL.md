@@ -2,7 +2,7 @@
 name: chrome-extension-wxt
 description: Build Chrome extensions using WXT framework with TypeScript, React, Vue, or Svelte. Use when creating browser extensions, developing cross-browser add-ons, or working with Chrome Web Store projects. Triggers on phrases like "chrome extension", "browser extension", "WXT framework", "manifest v3", or file patterns like wxt.config.ts.
 metadata:
-  version: "1.1.2"
+  version: "1.1.3"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/chrome-extension-wxt
     emoji: "🧩"
@@ -307,7 +307,7 @@ Common issues and solutions:
 3. **Hot reload not working**: Check browser console for errors
 4. **Storage not persisting**: Use `storage.local` or `storage.sync` correctly
 
-For detailed troubleshooting, see `references/troubleshooting.md`
+For deeper guidance on avoiding these issues, see [references/best-practices.md](references/best-practices.md).
 
 ## Resources
 
@@ -318,8 +318,6 @@ For detailed troubleshooting, see `references/troubleshooting.md`
 
 ### Bundled Resources
 
-- **scripts/**: Helper utilities for common extension tasks
 - **references/**: Detailed documentation for advanced features
-- **assets/**: Starter templates and example components
 
 Use these resources as needed when building your extension.
