@@ -58,7 +58,9 @@ Every revision from `2024-10-07` through `2025-11-25` opens with `initialize` an
 
 Build new servers on the 2025-era wire unless you control both ends. The stateless design guidance throughout this skill is what makes the eventual era switch cheap.
 
-Canonical SDK docs: [ts.sdk.modelcontextprotocol.io](https://ts.sdk.modelcontextprotocol.io) (v1) and [/v2/](https://ts.sdk.modelcontextprotocol.io/v2/). Test with the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) ([debugging guide](https://modelcontextprotocol.io/docs/tools/debugging)), then check your server against the [conformance suite](https://github.com/modelcontextprotocol/conformance) - a runnable CLI, not just a spec-process gate: `npx @modelcontextprotocol/conformance server --url http://localhost:3000/mcp` (`--spec-version` filters by revision). It also scores SDKs for the [tier system](https://modelcontextprotocol.io/community/sdk-tiers) (T1: TypeScript, Python, C#, Go; T2: Java, Rust, Ruby; T3: Swift, PHP, Kotlin).
+Canonical SDK docs: [ts.sdk.modelcontextprotocol.io](https://ts.sdk.modelcontextprotocol.io) (v1) and [/v2/](https://ts.sdk.modelcontextprotocol.io/v2/). Test with the [MCP Inspector](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector) - now three clients behind one binary (`npx @modelcontextprotocol/inspector`, `--cli`, `--tui`) and **connecting as `legacy` by default**, so flip `protocolEra` before testing a 2026-07-28 server (see "Testing Against Each Era" in `references/spec-2026-07-28.md`). Then check against the [conformance suite](https://github.com/modelcontextprotocol/conformance) - a runnable CLI, not just a spec-process gate: `npx @modelcontextprotocol/conformance server --url http://localhost:3000/mcp` (`--spec-version` filters by revision). It also scores SDKs for the [tier system](https://modelcontextprotocol.io/community/sdk-tiers) (T1: TypeScript, Python, C#, Go; T2: Java, Rust, Ruby; T3: Swift, PHP, Kotlin).
+
+For scaffolding rather than a decision reference, the official [`mcp-server-dev` plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/mcp-server-dev) ships three composing skills (`build-mcp-server`, `build-mcp-app`, `build-mcpb`) that interrogate your use case and generate a server; this skill is what you consult once one exists.
 
 ## Server Setup
 
@@ -366,10 +368,7 @@ Enforce your own cap server-side - see "Result-Size Budgets and Truncation" in `
 
 ### No-Parameter Tools
 
-For tools with no inputs, use explicit empty schema:
-```typescript
-inputSchema: { type: "object" as const, additionalProperties: false }
-```
+For tools with no inputs, use an explicit empty schema - not `undefined` or omission: `inputSchema: { type: "object" as const, additionalProperties: false }`
 
 ## Security
 
@@ -462,7 +461,7 @@ Decision-relevant shifts:
 
 The `content` vs `structuredContent` dual-delivery footgun is **unchanged** - the backwards-compat SHOULD persists and no precedence rule landed, so the guidance above still holds.
 
-Ecosystem gates: a Standards-Track SEP can no longer reach Final without a matching scenario in the [conformance suite](https://github.com/modelcontextprotocol/conformance) (SEP-2484). A [Server Card](https://github.com/modelcontextprotocol/experimental-ext-server-card) working group is standardizing server self-description - a JSON document with `GET <streamable-http-url>/server-card` reserved as the recommended location and the catalog at `.well-known/mcp/catalog.json`; SEP-2127 is still Draft.
+Ecosystem gates: a Standards-Track SEP can no longer reach Final without a matching scenario in the [conformance suite](https://github.com/modelcontextprotocol/conformance) (SEP-2484). A [Server Card](https://github.com/modelcontextprotocol/experimental-ext-server-card) working group is standardizing server self-description - a JSON document with `GET <streamable-http-url>/server-card` reserved as the recommended location and the catalog at `.well-known/mcp/catalog.json`; SEP-2127 is still Draft. Six more working groups have live charters covering file uploads, interceptors, triggers/events, agents, and skills-over-MCP - direction, not contract; see "Active Working Groups" in `references/spec-2026-07-28.md`.
 
 ## Extensions
 

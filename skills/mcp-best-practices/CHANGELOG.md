@@ -19,6 +19,9 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - security-auth: "Client Reality" section - path-specific `resource_metadata`, wildcard `.well-known` handlers, clients that omit the RFC 8707 `resource` parameter, silent degradation on audience misconfiguration, stale-refresh-token dead-ends.
 - transport-patterns: transport-level rejections bypass application logging; exclude GET from request-rate metrics (SSE keep-alive dominates by ~2 orders of magnitude); 415 on non-JSON POSTs.
 - Conformance suite as a runnable CLI (`npx @modelcontextprotocol/conformance server --url ...`), the SDK tier roster, and the `ext-tasks` repo as the canonical Tasks home.
+- "Testing Against Each Era": the MCP Inspector is now three clients behind one binary (web / `--cli` / `--tui`) and **connects as `legacy` by default**, so a 2026-07-28 server tested without setting `protocolEra` shows an `initialize` handshake and looks broken when it isn't. Covers the `legacy`/`auto`/`modern` setting, why the default is deliberate, and the repo's composable test servers.
+- "Direction: Active Working Groups": charter-level (no wire contract) summary of File Uploads (SEP-2356), Interceptors, Triggers/Events, Agents, Skills Over MCP (SEP-2640), and Server Card, each with why it matters to a server author.
+- Pointer to the official `mcp-server-dev` plugin (`build-mcp-server` / `build-mcp-app` / `build-mcpb`) for scaffolding a server, as the complement to this decision reference.
 
 ### Changed
 - **Breaking:** spec `2026-07-28` is released, not a locked Release Candidate; the SKILL.md section is re-tensed and re-scoped, with detail delegated to the new reference.
