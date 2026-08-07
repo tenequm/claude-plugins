@@ -2,7 +2,7 @@
 name: skills-best-practices
 description: Build high-quality Agent Skills for any agent - opinionated best practices distilled from the Agent Skills spec, official Anthropic guidance, and production experience. Covers SKILL.md structure, frontmatter, description writing, single-file vs references/ layout, progressive disclosure, testing, patterns, troubleshooting, and distribution across all surfaces (Claude.ai, Claude Code, API, Agent SDK). Use when creating a skill, reviewing skill quality, debugging why a skill won't trigger, structuring skill directories, or writing skill descriptions.
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/skills-best-practices
     emoji: "📐"
@@ -48,16 +48,16 @@ Only `name` and `description` are required in frontmatter.
 1. **Conditional loading**: a meaningful chunk of content is needed by only a subset of invocations (e.g. a tracked-changes doc most DOCX tasks never touch). If every invocation reads everything anyway, splitting adds Read round-trips and costs shareability while saving nothing.
 2. **Size pressure**: the body exceeds the recommended budget below.
 
-**Distribution is a veto.** If the skill must travel as one file - shipped inside a CLI, printed by a command, shared by paste - stay single-file regardless of size and condense instead. Condensing means cutting redundancy, filler, and over-explanation while preserving every load-bearing instruction; losing substance to hit a line count is the failure mode, not the fix. See the [single-file CLI-embedded pattern](references/patterns.md) used by playwright-cli, browser-use, and agent-browser.
+**Distribution is a veto.** If the skill must travel as one file - shipped inside a CLI, printed by a command, shared by paste - stay single-file regardless of size and condense instead. Condensing means cutting redundancy, filler, and over-explanation while preserving every load-bearing instruction; losing substance to hit a line count is the failure mode, not the fix. See the single-file CLI-embedded pattern under [Patterns](#patterns).
 
-**Size guidance** (opinionated lines drawn from experience, not enforced spec limits) - check with `wc -c SKILL.md`; chars are easier to verify than tokens:
+**Size guidance** (opinionated thresholds drawn from experience, not enforced spec limits) - measure with `wc -c SKILL.md`. Chars track token cost closely (~4 chars per token); line counts are not a metric - identical content varies 2x in lines by formatting style:
 
-| Tier | Lines | Chars | Beyond it |
-|------|-------|-------|-----------|
-| Recommended | 500 | 25k | Condense carefully; split only if the conditional-loading test passes |
-| Hard ceiling | 1000 | 50k | Must condense or split |
+| Tier | Chars | Beyond it |
+|------|-------|-----------|
+| Recommended | 25k | Condense carefully; split only if the conditional-loading test passes |
+| Hard ceiling | 50k | Must condense or split |
 
-> Official Anthropic guidance says to split at 500 lines. That advice assumes registry-installed skills with rarely-needed subtopics; this skill deliberately deviates for the single-file distribution cases above.
+> Official Anthropic guidance says to split at 500 lines. That advice assumes registry-installed skills with rarely-needed subtopics, and measures size in a unit that formatting distorts - this skill deliberately deviates on both.
 
 When a skill does split, information loads in three levels:
 
@@ -89,11 +89,13 @@ The description is the **single most important field** - it determines when your
 
 ### Rules
 
-- Write in **third person** ("Processes files..." not "I help you process files...")
+- Write in **third person** ("Processes files..." - first or second person breaks discovery)
 - Include **WHAT** it does + **WHEN** to use it
 - Max 1024 characters, no XML angle brackets
 - Be slightly "pushy" - Claude tends to **undertrigger** rather than overtrigger
-- Include specific trigger phrases users would naturally say
+- Include specific trigger phrases users would naturally say, plus file types where relevant
+- Write natural prose, not keyword dumps - matching is semantic, so a long "Triggers on X, Y, Z..." list adds little over a clear sentence
+- If the skill depends on an MCP server, name it ("...via MCP. Requires Linear MCP server connected.")
 
 ### Good vs Bad
 
@@ -110,7 +112,19 @@ description: Helps with documents.
 description: Creates sophisticated multi-page documentation systems.
 ```
 
-More examples in [references/description-guide.md](references/description-guide.md).
+### Negative Triggers
+
+When a skill overtriggers, add boundaries directly in the description:
+
+```yaml
+description: Advanced data analysis for CSV files. Use for statistical
+  modeling, regression, clustering. Do NOT use for simple data
+  exploration (use data-viz skill instead).
+```
+
+### Manually-Invoked Skills
+
+A skill with `disable-model-invocation: true` never auto-triggers - its description shows only in the `/` menu, so trigger phrases do nothing for it. Write a plain one-line summary and skip the trigger-tuning.
 
 ## Frontmatter Reference
 
@@ -134,12 +148,14 @@ The spec also defines optional `license`, `compatibility`, and `metadata` fields
 | `arguments` | Named positional arguments for `$name` substitution (space-separated string or list) |
 | `disable-model-invocation` | `true` = only user can invoke (for deploy, commit) |
 | `user-invocable` | `false` = hidden from `/` menu (background knowledge) |
-| `allowed-tools` | Pre-approves tools (no permission prompt); space-separated, e.g. `Read Grep Glob`. In the spec allowlist but tagged **(Experimental)** |
+| `allowed-tools` | Pre-approves tools (no permission prompt) for the current turn; space-separated, e.g. `Read Grep Glob`. In the spec allowlist but tagged **(Experimental)** |
 | `disallowed-tools` | Removes tools from Claude's pool while the skill is active; clears on your next message |
 | `model` | Override model for this skill; accepts `inherit`. Lasts the current turn only |
 | `effort` | Override effort level: `low`, `medium`, `high`, `xhigh`, `max` |
 | `context` | `fork` = run in isolated subagent |
 | `agent` | Subagent type when `context: fork` (e.g. `Explore`, `Plan`) |
+| `background` | `false` opts a forked skill out of background execution (v2.1.218+) |
+| `shell` | `bash` (default) or `powershell` |
 | `hooks` | Hooks scoped to this skill's lifecycle |
 | `paths` | Glob patterns limiting when skill activates |
 
@@ -154,6 +170,35 @@ Prefer **gerund form** for clarity:
 - `processing-pdfs`, `analyzing-spreadsheets`, `managing-databases`
 - Also acceptable: `pdf-processing`, `process-pdfs`
 - Avoid: `helper`, `utils`, `tools`, `documents`
+
+## Claude Code Specifics
+
+Official docs cover most Claude Code skill behavior: the [skills docs](https://code.claude.com/docs/en/skills) (invocation control, argument substitution, discovery and priority, tool permissions, `skillOverrides`, context budget), the [commands reference](https://code.claude.com/docs/en/commands#all-commands) for the current bundled-skills roster (it churns every few releases - never hardcode it), and the [settings reference](https://code.claude.com/docs/en/settings#available-settings). Below is only what those docs miss or what bites in practice.
+
+### Dynamic-Injection Footgun
+
+Claude Code preprocesses SKILL.md at load: an exclamation mark immediately touching a backticked command executes that command before Claude sees the content ([dynamic context injection](https://code.claude.com/docs/en/skills#inject-dynamic-context)). The preprocessor is **not markdown-aware**:
+
+- A literal example executes at load even inside a code fence or inline code span, and a failing placeholder command errors the whole skill at load
+- The inline form fires only at line start or after whitespace; a prefix defuses it (`KEY=` before the `!` leaves it literal)
+- A fence opened with `!` right after the backticks is the multi-line form and is equally live
+- `references/` files are read with the Read tool and never preprocessed - the only safe home for live examples. In a SKILL.md, break the `!`-to-backtick adjacency instead (wrap the `!` in its own code span, as this section does)
+- `"disableSkillShellExecution": true` in settings disables execution for user/project/plugin skills
+
+### Undocumented Behavior
+
+- `display-name`, `default-enabled`, and `fallback` frontmatter keys exist but are absent from the official frontmatter table
+- Frontmatter keys parse case-insensitively - kebab-case, snake_case, and camelCase resolve to the same field; boolean fields also accept `yes`/`no`/`on`/`off`/`1`/`0` (v2.1.218+)
+
+### Behavior That Bites
+
+- `context: fork` skills run **in the background by default** since v2.1.218 (`background: false` opts out); backgrounded forks get a narrower tool set and their edits bypass checkpoints, so `/rewind` cannot undo them. `Explore`/`Plan` forks skip CLAUDE.md and git status; since v2.1.198 `Explore` inherits the session model
+- Skills stack: `/skill-a /skill-b args` in one message loads up to six skills (v2.1.199+)
+- `permissions.additionalDirectories` does **not** load skills from those directories - only the `--add-dir` flag and `/add-dir` command do
+- The `allowed-tools` grant lasts the current turn - it clears when the user sends their next message, not when the skill "finishes"
+- The `/command` name comes from the skill's **directory**; frontmatter `name` is only a display label (plugin skills excepted). Nested skills are invocable by qualified name, e.g. `/apps/web:deploy`
+- Invoked skill content stays in context all session and is not re-read - write standing instructions, not one-time steps. After auto-compaction, each skill's most recent invocation is re-attached with its first 5,000 tokens from a shared 25,000-token budget filled most-recent-first; re-invoke to restore full content
+- Skill descriptions load at startup within a listing budget of **1% of the context window**; least-used descriptions drop first (names always kept), each entry capped at 1,536 chars. Diagnose with `/doctor`; tune via `skillListingBudgetFraction`, `skillListingMaxDescChars`, or `SLASH_COMMAND_TOOL_CHAR_BUDGET`
 
 ## Structuring Instructions
 
@@ -274,7 +319,17 @@ Copy this checklist and track progress:
 - [ ] Step 5: Verify output
 ```
 
-More patterns in [references/patterns.md](references/patterns.md).
+### Single-File Skill Embedded in a CLI
+
+For skills documenting a CLI tool: keep SKILL.md as one file next to the CLI source, compile it into the binary (`go:embed`, Rust `include_str!`, or equivalent), and add a `<tool> skill` subcommand that prints it. The printed guide always matches the installed version, and one command fetches the whole doc - playwright-cli, browser-use (`browser-use skill show`), and agent-browser (`agent-browser skills get core`) all converge on this shape. Never split such a skill into references/; condense carefully instead.
+
+### Working with MCP and Subagents
+
+MCP provides tool access; skills provide the workflow knowledge for using those tools well. Reference MCP tools by qualified name (`BigQuery:bigquery_schema`, `GitHub:create_issue`). Skills are portable expertise; subagents are isolated execution - in Claude Code, `context: fork` frontmatter runs a skill inside a subagent.
+
+### Developing Skills with Claude (A/B Loop)
+
+Build skills with two Claude instances: **Claude A** helps design and refine (it knows the format and what agents need); **Claude B** is a fresh instance with the skill loaded, tested on real tasks. Notice what context you repeatedly supply during normal work, have A capture it as a skill, test with B, bring B's specific failures back to A ("it forgot to filter test accounts"), and repeat. Iterate on observed behavior, not assumptions. For output-style skills, input/output example pairs communicate the desired style better than any description.
 
 ## Scripts
 
@@ -322,6 +377,22 @@ uvx --from skills-ref agentskills validate path/to/skill
 
 Exit 0 means valid. It checks `SKILL.md` format and enforces the spec's strict frontmatter allowlist (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`). Most registries (e.g. ClawHub) and CI gates run this, so validating locally catches failures early. If you rely on Claude Code-only frontmatter (see the publishing caveat under [Frontmatter Reference](#frontmatter-reference)), strip those fields from the copy you validate.
 
+## Pre-Publish Checklist
+
+Calibrate to scope: for a project-local or single-user skill, skip the triggering-accuracy and distribution-hygiene items.
+
+- [ ] Folder and `name` kebab-case and matching; file is exactly `SKILL.md`
+- [ ] Description: third person, WHAT + WHEN, specific triggers, under 1024 chars, no angle brackets
+- [ ] Single file unless conditionally-loaded content justifies references/; within size budget (`wc -c`)
+- [ ] Critical instructions at the top; working examples, not pseudocode; consistent terminology
+- [ ] If split: references linked from SKILL.md, one level deep, TOC for files over 100 lines
+- [ ] Scripts: explicit error handling, no unexplained constants, dependencies listed, execute-vs-read intent clear
+- [ ] Triggering tested: fires on direct and paraphrased requests, silent on unrelated and similar-but-distinct ones
+- [ ] Functional: normal and edge cases pass, output consistent across 3-5 runs, tested on more than one model
+- [ ] No time-sensitive info, Windows-style paths, or deprecated APIs
+- [ ] Spec validator exits 0 (command above)
+- [ ] After upload: monitor under/over-triggering in real conversations, iterate the description, bump version on every change
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -334,7 +405,7 @@ Exit 0 means valid. It checks `SKILL.md` format and enforces the spec's strict f
 | "Invalid skill name" | Spaces or capitals | Use kebab-case: `my-skill-name` |
 | Whole skill silently skipped at load | Description exceeds 1024 chars | Trim it - the loader rejects the file, not just the description |
 | Frontmatter fails to parse | `Triggers:` (colon-space) or straight `"quotes"` inside an unquoted `description` value | Quote the whole value or remove the colon/quotes |
-| A doc example runs a shell command | A `!` directly touching a backticked command executes on load, even inside a code fence | Move the example to `references/` or break the `!`-backtick adjacency (see Security) |
+| A doc example runs a shell command | A `!` directly touching a backticked command executes on load, even inside a code fence | Move the example to `references/` or break the `!`-backtick adjacency (see [Dynamic-Injection Footgun](#dynamic-injection-footgun)) |
 
 ## Distribution
 
@@ -355,7 +426,7 @@ Custom skills are uploaded through the Skill Management API; `anthropic`-type sk
 
 **Network access differs by surface.** The API code execution environment has **no network access and no runtime package installation** - bundle dependencies or use pre-installed packages. On claude.ai, by contrast, Skills **can** install packages from npm and PyPI and pull from GitHub.
 
-Further API details when you need them: a `pause_turn` stop reason signals a long-running Skill operation to resume; reuse a container across turns via `container.id`; Skill-generated files return `file_id` and are fetched via the Files API; changing the Skills list breaks prompt caching; and Skills are not ZDR-eligible (data is retained per the standard policy).
+Also: a `pause_turn` stop reason signals a long-running Skill operation; reuse containers across turns via `container.id`; generated files come back via the Files API; changing the Skills list breaks prompt caching; Skills are not ZDR-eligible.
 
 ## Security
 
@@ -363,15 +434,11 @@ Further API details when you need them: a `pause_turn` stop reason signals a lon
 - No XML angle brackets in frontmatter (injection risk)
 - Audit all bundled scripts and resources before using third-party skills
 - Be cautious of skills that fetch from external URLs
-- **Documenting the dynamic-injection syntax (a `!` prefix on a backticked command)?** The Claude Code loader executes it even inside a markdown code fence or inline code span - it cannot tell a doc example from a directive. Keep such examples in `references/` files, which are read with the Read tool and never preprocessed, or keep the `!` and the backtick from touching (wrap the `!` in its own code span, as this bullet does) so a meta-skill about skills doesn't run shell commands on load
+- Documenting the dynamic-injection syntax is itself a hazard - the loader executes examples at load, even inside code fences. See the [Dynamic-Injection Footgun](#dynamic-injection-footgun) before writing any
 
 ## Additional References
 
-- [Description writing guide](references/description-guide.md) - detailed examples and anti-patterns
-- [Patterns and workflows](references/patterns.md) - advanced patterns with MCP, subagents, iterative refinement
-- [Claude Code features](references/claude-code-features.md) - context:fork, dynamic injection, argument substitution
-- [Quality checklist](references/checklist.md) - pre-upload validation checklist
-- [ClawHub publishing](references/clawhub-publishing.md) - `metadata.openclaw` schema, moderation pipeline, reason codes catalog, pre-publish checklist
+- [ClawHub publishing](references/clawhub-publishing.md) - source-mined moderation quirks: reason codes and fixes, LLM-review survival tactics, constraints absent from ClawHub's docs
 
 ## Official Resources
 
