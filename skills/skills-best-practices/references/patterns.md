@@ -14,6 +14,7 @@ Advanced patterns for structuring skills, drawn from Anthropic's official exampl
 - Pattern 7: Template pattern
 - Pattern 8: Examples pattern (input/output pairs)
 - Progressive disclosure patterns
+- Single-file skill embedded in a CLI
 - Skills + MCP integration
 - Skills + Subagents integration
 - Developing skills with Claude (Claude A / Claude B)
@@ -310,6 +311,25 @@ Use docx-js. See [DOCX-JS.md](DOCX-JS.md).
 For simple edits, modify XML directly.
 **For tracked changes**: See [REDLINING.md](REDLINING.md)
 ```
+
+## Single-File Skill Embedded in a CLI
+
+For skills that document a CLI tool, keep SKILL.md as one file next to the CLI source, compile it into the binary (`go:embed`, Rust `include_str!`, or equivalent), and add a subcommand that prints it:
+
+```
+mytool/
+└── internal/cli/
+    ├── SKILL.md     # single file, no references/
+    └── skill.go     # embeds SKILL.md; `mytool skill` prints it
+```
+
+Why it works:
+
+- The printed guide always matches the installed CLI version - no drift between docs and binary
+- Agents and people fetch the full guide with one command; the file can also be pasted or gisted as a unit
+- playwright-cli, browser-use (`browser-use skill show`), and agent-browser (`agent-browser skills get core`) all converge on this shape
+
+Because the file must travel as one unit, never split it into references/ - condense carefully instead, preserving every load-bearing instruction.
 
 ## Skills + MCP Integration
 

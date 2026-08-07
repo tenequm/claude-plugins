@@ -67,9 +67,9 @@ Use `/update-skill <skill-name>` (at `.claude/skills/update-skill/`) to maintain
 
 ## Rules
 
-- Use progressive disclosure (SKILL.md + references/)
+- Single-file SKILL.md by default; split to references/ only when content is conditionally loaded (big chunks needed by only some invocations). Skills that must travel as one file stay single-file - condense, don't split
 - All code examples must work - no pseudocode
-- Keep SKILL.md under 500 lines, split to references/ when needed
+- Size: 500 lines / 25k chars recommended, 1000 lines / 50k chars hard ceiling (CI-enforced via check_skills.py). Condense carefully - never drop load-bearing content to hit a number
 - **ALWAYS** bump `metadata.version` in frontmatter when any file in a skill is modified (SKILL.md or references/). Use semver: patch for fixes, minor for new content, major for breaking changes
 - No unnecessary files (no README.md, package.json, project.json per skill)
 - Use conventional commits

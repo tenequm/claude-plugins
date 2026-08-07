@@ -1,6 +1,6 @@
 # Skill Quality Checklist
 
-Validate your skill before upload or sharing. Based on Anthropic's official checklist from "The Complete Guide to Building Skills for Claude."
+Validate your skill before upload or sharing. Based on Anthropic's official checklist from "The Complete Guide to Building Skills for Claude," with opinionated amendments from production experience.
 
 > **Calibrate to scope.** This checklist targets skills headed for broad distribution (ClawHub, unknown users, multiple models). For a project-local, single-user, or `disable-model-invocation` skill, skip items that don't apply - triggering-accuracy tuning, multi-model testing, and distribution hygiene matter far less when one person invokes the skill in their own repo.
 
@@ -39,13 +39,15 @@ Validate your skill before upload or sharing. Based on Anthropic's official chec
 - [ ] Error handling included for common failures
 - [ ] Consistent terminology throughout (pick one term, stick with it)
 
-## Progressive Disclosure
+## Structure (Single File vs. references/)
 
-- [ ] SKILL.md body under **500 lines**
-- [ ] Detailed docs in separate files (references/, scripts/)
-- [ ] References clearly linked from SKILL.md
-- [ ] References are **one level deep** (no nested chains)
-- [ ] Long reference files (>100 lines) have a table of contents
+- [ ] Single SKILL.md unless content is **conditionally loaded** (big chunks needed by only some invocations)
+- [ ] Skills that must travel as one file (CLI-embedded, pasted, printed by a command) stay single-file - condense, don't split
+- [ ] Within recommended budget: 500 lines / 25k chars (`wc -c`); hard ceiling 1000 lines / 50k chars
+- [ ] Condensing preserved every load-bearing instruction (no lossy trimming to hit a number)
+- [ ] If split: references clearly linked from SKILL.md
+- [ ] If split: references are **one level deep** (no nested chains)
+- [ ] If split: long reference files (>100 lines) have a table of contents
 
 ## Scripts (if applicable)
 
