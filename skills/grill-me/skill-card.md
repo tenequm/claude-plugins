@@ -14,7 +14,9 @@ opwizardx (tenequm/skills, https://github.com/tenequm/skills)
 
 MIT-0 when installed from ClawHub (registry-wide license for all published skills). Source repository https://github.com/tenequm/skills is licensed Apache-2.0; a LICENSE.txt copy ships in this bundle.
 
-Adapted from the `grill-me` skill in https://github.com/mattpocock/skills, which is licensed MIT.
+The instructional text is derived, near-verbatim, from the `grill-me` skill in https://github.com/mattpocock/skills at commit 62f43a1 (April 2026), Copyright (c) 2026 Matt Pocock, licensed MIT. The full MIT notice is reproduced in the LICENSE.txt shipped with this bundle.
+
+This is a deliberate fork of that April 2026 version, not a mirror that tracks upstream: mattpocock has since replaced his `grill-me` with a thin shim that delegates to a separate `grilling` skill, while this version keeps the original standalone behavior. It will not follow upstream changes.
 
 ## Use Case
 
@@ -50,7 +52,8 @@ Mitigation: The skill routes only questions genuinely answerable from the codeba
 ## References
 
 - Source: https://github.com/tenequm/skills/tree/main/skills/grill-me
-- Adapted from: https://github.com/mattpocock/skills (MIT)
+- Derived from: https://github.com/mattpocock/skills/blob/62f43a1/skills/productivity/grill-me/SKILL.md (MIT, Copyright (c) 2026 Matt Pocock)
+- Current upstream, for comparison: https://github.com/mattpocock/skills/blob/main/skills/productivity/grilling/SKILL.md
 
 ## Skill Output
 
@@ -64,7 +67,7 @@ Other properties: Interactive and multi-turn by design; it produces alignment, n
 
 ## Skill Version
 
-0.1.0
+0.1.1
 
 ## Ethical Considerations
 
