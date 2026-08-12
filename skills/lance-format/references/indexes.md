@@ -1,8 +1,8 @@
 # Lance v11 reference - indexes and distributed builds (sections 11-12)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.2`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -67,16 +67,35 @@ SIMD kernels in `lance-linalg`; the `fp16kernels` feature compiles C SIMD kernel
 "vector dimension must be divisible by 8 for IVF_RQ" (`rust/lance-index/src/vector/bq/builder.rs`).
 **RaBitQ is now multi-bit** (new in v8, PR #7038): `num_bits` is "in the range 1..=9"
 (`docs/src/format/index/vector/index.md:255`). IVF_RQ always stores the 1-bit binary sign
-code in `_rabit_codes`; "for `num_bits > 1`, the remaining `num_bits - 1` ex-code bits are
-stored in `__ex_codes` instead of widening the binary code path"
-(`index.md:282-284`), alongside `__add_factors_ex` / `__scale_factors_ex` correction columns.
+code in `_rabit_codes`; for `num_bits > 1`, the remaining `num_bits - 1` ex-code bits are stored
+in a separate column instead of widening the binary code path, alongside `__add_factors_ex` /
+`__scale_factors_ex` correction columns.
+
+**The ex-code column was renamed in v11** (#8407). Writers now emit **`__blocked_ex_codes`**,
+sized `next_multiple_of(code_dim, 64) * (num_bits - 1) / 8`. The old column is still readable:
+"Indexes written before the blocked ex-code layout store the same bits in `__ex_codes`, sized
+`ceil(dimension * (num_bits - 1) / 8)`. Readers still accept that column and repack it at load
+time; writers no longer emit it" (`docs/src/format/index/vector/index.md:207-209`). Two sibling
+sizing corrections landed with it: `__pq_code` is
+`list<uint8>[num_sub_vectors * num_bits / 8]` (not `[m]`), and `_rabit_codes` is
+`ceil(code_dim / 8)` (not `dimension / 8`). Every vector-index storage column is also now
+declared **nullable**, and the RQ rows gained a separate "Present when" column.
 A new `query_estimator` metadata field selects the distance-estimator layout: "`residual_query`
 or `raw_query`. Missing values are read as `residual_query` for compatibility with released
 1-bit IVF_RQ indexes" (`index.md:258`); raw-query search (PR #7078) adds an `__error_factors`
 column "for raw-query lower-bound pruning" (`index.md:201`). The metadata schema also carries
 `code_dim` (u32, the rotated-vector dimension). Per-row storage is `dimension/8 + 16` bytes
 (8 for the row ID + 8 for the factors) **only at `num_bits=1`**
-(`docs/src/guide/performance.md:416`); multi-bit adds the `__ex_codes` and ex-factor columns.
+(`docs/src/guide/performance.md:416`); multi-bit adds the `__blocked_ex_codes` and ex-factor
+columns.
+
+**bfloat16 is not usable for vector indexes**, despite the docs recommending it as an embedding
+type directly above an IVF_PQ `create_index` example (`docs/src/guide/data_types.md:406`). The
+`lance.bfloat16` extension stores as `FixedSizeBinary(2)`, and the accepted element types are
+only `Float16 | Float32 | Float64 | UInt8 | Int8`
+(`rust/lance/src/index/vector/utils.rs:244`). The rejection fires on **both** the index-build
+and the query path (`scanner.rs:1647`, `knn.rs:397`), so it is not a build-time-only limit. The
+in-tree error message is itself stale - it omits `Int8` from the list it actually accepts.
 
 **Approx mode** (new in `v8.0.0-beta.10`, PR #7179). Vector search takes a public
 `approx_mode` with three values - "`fast`, `normal`, and `accurate`" - to pick the
@@ -463,6 +482,56 @@ a posting-backed scoring core: an internal `ComposableScorer` protocol, a cross-
 - Conjunction approximations are ordered by iterator cost (#8299): "Keep scorer children in query
   order so score summation, score bounds, document keys, and ties remain bit-for-bit stable" -
   1.50x fewer comparisons, 1.12x speedup, with results unchanged.
+- Conjunction confirmations are ordered by `match_cost` (#8354), measured **200 -> 120**
+  two-phase `matches()` calls per query; same-column `MUST + SHOULD` scores the optional side
+  lazily, "only touch[ing] the optional side when it can change competitiveness or an exact
+  score is requested" (#8448).
+
+**When the posting-backed scorer bails out.** `CompoundQueryExec` refuses the fast path and
+reverts to the materializing hash-join plan whenever the table has **any unindexed fragment**,
+the query spans **more than one column**, granularity is **`ListElement`**, or the overlay plan
+is not `Unchanged` (`rust/lance/src/dataset/scanner.rs:3940-3948`). The first condition is the
+one that bites in practice: a table with an unindexed tail silently gets the slower plan, so
+benchmark compound FTS only after the backlog is folded in.
+
+#### Inspecting tokenization (v11)
+
+`lance.tokenize(...)` previews the tokens a full-text query will produce **without creating a
+dataset or index** (#8415): "Use `lance.tokenize` to inspect the tokens that a full-text query
+will produce without creating a dataset or index" (`docs/src/guide/tokenizer.md:17-18`). It
+returns `lance.FtsToken(text, position)`. On the query side, `analyze_plan` appends
+`tokenized_query=` to FTS leaves (#8414); `explain_plan` is deliberately unchanged.
+
+**`max_token_length` is the one tri-state option.** Every other analyzer option treats `None` as
+"use the analyzer default"; this one does not: "omitting it keeps the default length limit of
+40, while `max_token_length=None` disables the limit" (`tokenizer.md:45-46`).
+
+**`InvertedIndexParams` is a closed set.** It exposes base-tokenizer selection, ngram range,
+`lower_case`, `ascii_folding`, and stemming - there is **no** hook for a custom token filter and
+**no non-English stemmer**. If your corpus needs either (camelCase splitting, a non-English
+language), Lance FTS cannot be configured for it; the options are to pre-tokenize into your own
+column or to use ngrams.
+
+**The `Fixed32` empty-segment merge failure.** A fold whose batch contributes zero tokens - an
+all-NULL tail, but also empty or whitespace-only documents - still writes a delta segment. On
+read-back, `posting_tail_codec()` aggregates over partitions and a partitionless segment falls
+back to `PostingTailCodec::default()` (`VarintDelta`) rather than reading its file metadata
+(`rust/lance-index/src/scalar/inverted/index/inverted_index.rs:72`). The root cause is two
+disagreeing defaults: the `Default` impl is `VarintDelta` while `parse_posting_tail_codec`
+defaults to `Fixed32` when the key is absent. **Scope: this only bites `Fixed32` indexes** - FTS
+`format_version=1` or legacy indexes missing the `posting_tail_codec` key. The V2 default is
+`VarintDelta`, which happens to match the `Default` impl, so a default-configured FTS index never
+trips it. Where it applies, once delta segments reach the merge threshold with an empty one among
+them, `merge_segments` fails deterministically every time. Guard by skipping the fold when the
+unindexed tail has no non-null, non-empty values.
+
+**The `fts()` table function does not declare `_score`.** `FtsTableProvider` declares its logical
+schema as dataset columns plus optional `_rowid`/`_rowaddr` and never `_score`
+(`rust/lance/src/dataset/udtf.rs:39`), while the scan's scoring autoprojection force-appends
+`_score` physically. So `COUNT(*)` and `GROUP BY` over `fts()` are **rejected by DataFusion**
+(the logical and physical column counts disagree), and `_score` cannot be named in a projection
+or ordered by. Plain `SELECT` shapes work only because nothing downstream validates - the
+`_score` you see is the undeclared column leaking through.
 
 ### 11.4 Geo / RTree
 

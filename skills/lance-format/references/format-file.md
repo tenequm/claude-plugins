@@ -1,8 +1,8 @@
 # Lance v11 reference - file format (sections 1-4)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.2`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -158,7 +158,7 @@ instead of panicking or yielding garbage - a file that previously "read" may now
 **Published vs tagged.** crates.io carries only final releases - `lance 9.0.1` (2026-08-06) is
 the newest, preceded that same day by the sibling patch finals 8.0.1, 7.1.0, 6.1.0, 4.0.2, and
 3.0.2. **No 10.x or 11.x version, and no pre-release of any kind, is published.** Beta and rc
-tags exist in git only (beta artifacts go to fury.io), so building against `v11.0.0-beta.2`
+tags exist in git only (beta artifacts go to fury.io), so building against `v11.0.0-beta.6`
 means a git dependency, not a registry one.
 
 **Building.** Five workspace crates carry a protobuf build script - `lance-encoding`,
@@ -336,6 +336,13 @@ through its required `selector` argument" (`blob.md:187-188`).
 inline bytes, an external URI, an external URI slice (`Blob.from_uri(uri, position=, size=)`),
 and null - enabling many payloads packed into one container file referenced by
 `(position, size)` slices.
+
+**Blob v2 fields nest** (v11): "Blob v2 fields can be nested inside structs and variable-length
+lists. Blob-aware scans preserve the surrounding nested layout" (`docs/src/guide/blob.md:118-119`).
+v11 also taught `FileFragment::update_columns` to handle blob-v2 columns via their descriptor
+representation (#8344), and added `BlobFile.read_ranges(ranges) -> list[bytes]` (#8319) for
+vectored reads - "The underlying physical reads may be reordered, coalesced, or split for
+efficiency."
 
 **Null selections are preserved (v10, BREAKING, PR #7903).** This is the change that triggered
 the major bump. "Blob selection APIs preserve logical result cardinality. `read_blobs()` and
