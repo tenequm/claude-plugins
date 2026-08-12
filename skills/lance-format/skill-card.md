@@ -39,15 +39,15 @@ Mitigation: Verify retention requirements and tags/branches before cleanup; test
 
 Risk: The skill covers unstable format features (file format 2.2/2.3, Data Overlay Files, MemWAL) whose on-disk encodings can change between beta tags; datasets written with them may become unreadable by other Lance versions.
 
-Mitigation: The skill explicitly instructs pinning concrete release tags (v9.0.1 for stable) and using explicit format version numbers rather than the floating next alias.
+Mitigation: The skill explicitly instructs pinning concrete release tags (v10.0.0 for stable) and using explicit format version numbers rather than the floating next alias.
 
 Risk: Misapplied performance tuning against remote object storage can multiply request costs and latency.
 
-Mitigation: The skill's performance reference mandates leaving store knobs at defaults and minimizing remote calls, based on measured results only.
+Mitigation: The skill's performance reference puts minimizing remote calls first and treats store tuning as a second step, separating upstream's documented starting values from its own benchmark-verified measurements.
 
 ## References
 
-- Upstream: https://github.com/lance-format/lance (tracked tag: v11.0.0-beta.2)
+- Upstream: https://github.com/lance-format/lance (tracked tag: v11.0.0-beta.6)
 - Official docs (mirrored verbatim in references/docs/): Lance docs at the tracked tag
 - Source: https://github.com/tenequm/skills/tree/main/skills/lance-format
 
@@ -57,13 +57,13 @@ Output type(s): Rust and Python code using the Lance crates/pylance, format and 
 
 Output format: Markdown with Rust/Python/SQL code blocks.
 
-Output parameters: Citations reference path:line in the lance-format/lance repo at the tracked tag; permalinks built as https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>.
+Output parameters: Citations reference path:line in the lance-format/lance repo at the tracked tag; permalinks built as https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>.
 
 Other properties: Reference-only skill - it performs no I/O itself; code it produces can create, modify, or delete datasets when executed by the user.
 
 ## Skill Version
 
-0.14.1
+0.15.0
 
 ## Ethical Considerations
 

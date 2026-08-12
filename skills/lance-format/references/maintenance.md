@@ -1,7 +1,7 @@
 # Maintaining this skill
 
 Citations across the reference files are `path:line` relative to the `lance-format/lance` repo;
-build a permalink as `https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line
+build a permalink as `https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line
 numbers drift between tags - treat them as approximate.
 
 To refresh: `git -C <your lance-format/lance clone> fetch --tags`, check out the newest tag
@@ -12,11 +12,13 @@ current major, and do not assume the previous major ever got a final), then:
 1. Re-copy the docs mirror: the `.md` files of `docs/src/{guide,quickstart}`,
    `docs/src/format` (plus the `format/index/*.svg` diagrams), and
    `docs/src/integrations/datafusion.md` into `references/docs/`, preserving the tree.
-   Update the directory counts in `SKILL.md` if docs were added or removed. Two deviations from
-   upstream bytes are expected and enforced by this repo's pre-commit hooks, not drift: trailing
-   whitespace is stripped from every file, and `end-of-file-fixer` removes the trailing blank
-   line that `format/table/layout.md` and `format/table/row_id_lineage.md` carry upstream.
-   Normalize both before diffing the mirror against a new tag.
+   Update the directory counts in `SKILL.md` if docs were added or removed. **Three** deviations
+   from upstream bytes are expected and enforced by this repo's pre-commit hooks, not drift:
+   trailing whitespace is stripped from every file; `end-of-file-fixer` removes the trailing
+   blank line that `format/table/layout.md` and `format/table/row_id_lineage.md` carry upstream;
+   and the same hook *adds* a trailing newline to
+   `format/index/indices-fragment handling.drawio.svg` (mirror 21857 bytes vs upstream 21856).
+   Normalize all three before diffing the mirror against a new tag.
 2. Re-check Part A of `references/performance.md` against the new `guide/performance.md` and the
    other perf-bearing sections it routes to. Part A deliberately does **not** copy that text -
    it points at `references/docs/`, so a mirror refresh updates it automatically; what needs

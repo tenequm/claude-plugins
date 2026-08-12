@@ -1,6 +1,6 @@
 # Lance performance - combined reference
 
-Everything performance-shaped for Lance (`lance-format/lance@v11.0.0-beta.2`) in one place.
+Everything performance-shaped for Lance (`lance-format/lance@v11.0.0-beta.6`) in one place.
 **Part A** routes to the official guidance - which lives verbatim in this skill's
 `references/docs/` mirror, so it is pointed at rather than re-copied - and then adds the
 performance behavior upstream has *not* documented, derived from source and commit history.
@@ -14,7 +14,7 @@ performance behavior upstream has *not* documented, derived from source and comm
   - [Performance changes not in the guide (v10, source-derived)](#performance-changes-not-in-the-guide-v10-source-derived)
   - [Performance changes not in the guide (v11, source-derived)](#performance-changes-not-in-the-guide-v11-source-derived)
 - [Part B: Field-verified remote-storage practices](#part-b-field-verified-remote-storage-practices)
-  - [The governing rule: minimize remote calls, don't tune the store](#the-governing-rule-minimize-remote-calls-dont-tune-the-store)
+  - [The governing rule: minimize remote calls first](#the-governing-rule-minimize-remote-calls-first)
   - [Write path](#write-path)
   - [Local-filesystem crash safety and recovery](#local-filesystem-crash-safety-and-recovery)
   - [Index maintenance](#index-maintenance)
@@ -38,9 +38,11 @@ Read these directly - they are byte-verbatim copies of the upstream docs at the 
 | `quickstart/vector-search.md` | (whole file) | ANN build and query tuning walkthrough |
 | `guide/observability.md` | (whole file) | Logging, trace events, object-store metrics |
 
-Provenance: `docs/src/guide/performance.md` is byte-unchanged from `v9.1.0-beta.8` through
-`v11.0.0-beta.2` - every number, default, and recommendation in it is current as written - and
-the same holds for the other perf-bearing sections above.
+Provenance: `docs/src/guide/performance.md` was byte-unchanged from `v9.1.0-beta.8` through
+`v11.0.0-beta.2`, then **changed at `v11.0.0-beta.4`** (#8387), which added the "Tuning remote
+scans" section and a `row_id_meta` component to the Row Id Sequence cache key. The mirror is
+refreshed to `v11.0.0-beta.6`, so every number, default, and recommendation in it is current as
+written; the other perf-bearing sections above remain byte-unchanged across that range.
 
 ## OpenTelemetry metrics (not in the performance guide)
 
@@ -94,7 +96,7 @@ is gone.
 
 ## Performance changes not in the guide (v11, source-derived)
 
-Same caveat as above: verified against the `v11.0.0-beta.2` source and commit history, absent
+Same caveat as above: verified against the `v11.0.0-beta.6` source and commit history, absent
 from `docs/src/guide/performance.md`.
 
 **Large commits got much cheaper on the manifest side** (PR #7881). Transactions serialized
@@ -145,18 +147,43 @@ corpus) running against S3-compatible object storage - not from the official doc
 practice was measured with a before/after comparison and shipped. Nothing here is
 speculative; if an approach was tried and did not clearly win, it is not listed.
 
-## The governing rule: minimize remote calls, don't tune the store
+## The governing rule: minimize remote calls first
 
-A tool that must work against arbitrary buckets (AWS, Hetzner, R2, MinIO, ...) cannot
-assume any particular provider's rate limits or bandwidth. Leave `LANCE_IO_THREADS`,
-`LANCE_AIMD_*`, and request timeouts at their defaults and treat them as
-last-resort escape hatches, not levers: a knob tuned for one bucket misbehaves on another,
-and the same wall-clock win is almost always available by issuing fewer remote calls
-instead. Explicit per-column compression metadata was also tried and yielded little
-real-world benefit relative to the effort - reducing what you read beats shrinking it.
+A tool that must work against arbitrary buckets (AWS, Hetzner, R2, MinIO, ...) cannot assume any
+particular provider's rate limits or bandwidth. The order-of-magnitude wins in this document all
+come from issuing **fewer remote calls** - fewer commits, fewer scans, fewer round trips - not
+from tuning the store. Do that first. Explicit per-column compression metadata was tried and
+yielded little real-world benefit relative to the effort: reducing what you read beats shrinking
+it.
 
-Every practice below is an instance of the same rule: fewer commits, fewer scans,
-fewer round trips.
+**Tuning the store is a legitimate second move, once call volume is already minimized.** v11
+added an official "Tuning remote scans" section (`docs/src/guide/performance.md`, #8387) with a
+concrete starting point for bandwidth-constrained access:
+
+| Knob | Suggested start | Why |
+|------|-----------------|-----|
+| `LANCE_IO_THREADS` | 8 | Cloud stores default to **64**, "intended for high-bandwidth, in-region access and can be too aggressive across regions or over the public internet" |
+| `fragment_readahead` | 1 | "Set it to `1` to match the fragment-level I/O pattern, then increase it if the storage connection has spare bandwidth" |
+| `batch_readahead` | 2 | Bounds decode-ahead work |
+| `io_buffer_size` | 64 MB | Caps in-flight buffered bytes |
+
+These are upstream's numbers for cross-region or public-internet access, not ours - we have not
+A/B'd them against the workload behind Part B, and a value tuned for one bucket can misbehave on
+another. Treat the table as a documented starting point to measure from, and keep the
+benchmark-verified practices below as the primary lever.
+
+Two counter-intuitive caveats from the same section, worth knowing before you tune:
+
+- **`scan_in_order=True` does not serialize fragment reads.** "An ordered dataset scan still
+  overlaps I/O from multiple fragments. `scan_in_order=True` controls the order in which batches
+  are returned; it does not make fragment reads sequential." This is why a dataset scan issues
+  more concurrent requests than scanning one fragment directly.
+- **Lowering `batch_size` may not shrink the request.** "Lance reads encoded pages from storage,
+  so reducing `batch_size` changes the returned and decoded batch sizes but may not reduce the
+  initial range request."
+
+Every practice below is an instance of the governing rule: fewer commits, fewer scans, fewer
+round trips.
 
 ## Write path
 
@@ -166,8 +193,29 @@ fewer round trips.
   `merge_insert` per batch took 75.7 min / 354 commits; rewritten as a single-commit
   append path the same copy took 18.2 min / 1 commit. A bounded A/B on one delta measured
   3,890 ms (merge) vs 882 ms (append).
+- **The anatomy of that cost: a commit is three sequential round trips.** A LIST of `_versions/`
+  (the conflict scan - *not* a HEAD of the latest manifest), then an unconditional awaited PUT of
+  the `.txn` file, then the conditional PUT of the manifest itself (`PutMode::Create`,
+  `rust/lance-table/src/io/commit.rs:1569`). On non-lexically-ordered stores a fourth
+  best-effort hint PUT follows. The LIST runs on **every attempt** by design, so a contended
+  commit multiplies all three. At 50-100 ms RTT that is 150-300 ms per commit before any data
+  moves - which is why commit count dominates.
+  Note that inlining a sub-20 MiB transaction into the manifest cuts *read* round trips, not
+  write ones: the separate `.txn` file is written either way.
 - **Use `Append` for append-shaped data; reserve `merge_insert` for genuine upserts.**
   Merge is commit-latency-bound on object storage; append is bandwidth-bound.
+- **`merge_insert` accelerates only when *every* `on` column is indexed.** The v7/v8 rule was
+  stricter - exactly one join column - but at v10+ the dispatch requires that all `on` columns
+  carry an exact-equality scalar index (`rust/lance/src/dataset/write/merge_insert.rs:1323`),
+  plus `use_index == true` and `delete_not_matched_by_source == Keep`. A **partially** indexed
+  composite key silently falls through to a full-table join. The cost lands in the read, not the
+  write: a measured 8-row update wrote one data file and one deletion vector but **read ~143
+  MiB**, scanning the full key columns across 2.1M rows to locate the 8 matches.
+- **Manifest *size* grows with fragment count, so `_versions/` can dwarf the data.** Each
+  manifest lists every current fragment. Measured on a fragmented store: `_versions/` at 110 MB
+  across 178 manifests (~2.3 MB each for the older ones) against a much smaller data footprint;
+  on a small-row table, 7.0 MB of data carried 54 MB of `_versions/` and 3.5 MB of
+  `_transactions/`. Compaction reduces future manifest size; only cleanup reclaims the old ones.
 - **Never commit per item.** A benchmark that committed once per logical unit produced
   3.3 GB of store for 40k tiny rows in ~20 min (manifest churn); the same work batched at
   ~100 units per commit was 17 MB in 1.6 s.
@@ -254,7 +302,22 @@ analogue on object storage. Mechanism, verified at `v11.0.0-beta.2`:
   off.** Lance answers FTS and vector queries as a union of the index scan and a flat
   scan of unindexed fragments. `fast_search` skips that flat arm, silently dropping the
   newest rows from results. Only enable it when no unindexed tail exists, and keep a
-  tail-recall regression test.
+  tail-recall regression test. On v11, an unindexed tail additionally disqualifies the
+  posting-backed compound FTS scorer (section 11.3), so it costs plan quality too.
+- **Measuring the backlog: there is no `count_unindexed_rows()`.** The supported API is
+  `Dataset::unindexed_fragments(idx_name)` on the `DatasetIndexInternalExt` trait
+  (`rust/lance/src/index.rs:2548`) - public, but carrying "Internal use only. No API stability
+  guarantees", so pin your Lance version if you depend on it. `index_statistics()` does surface
+  `num_unindexed_rows`, but only inside an untyped JSON string and at the cost of a full
+  `count_rows`. Prefer counting rows in the returned fragments.
+- **Choosing ngrams over `simple`+stem costs relevance, not just RAM.** On a 111-query
+  paraphrase set over the same corpus (Success@3, full corpus): word `simple`+stem scored
+  **66/111** against production `ngram(3,5)` at **31/111** - roughly 2x better - while using
+  ~5x less RAM (379 MB vs 1,868 MB at 2M rows) and ~4x less disk. ngram posting size scales with
+  document *bytes*, not document count: a measured ngram(3,5) index over 161,718 text values
+  produced 737 MB of postings, about **4.5 KB of index per document**, because every text emits
+  one posting per `(length - n + 1)` substrings at each n in the range. Reach for ngrams only
+  when you actually need substring/typo matching, and measure recall before assuming it helps.
 - **Gate `cleanup_old_versions` to every Nth commit.** Its cost is O(accumulated
   versions), not O(delta): it consumed 8.8 s (58%) of a 200-row incremental sync and gets
   slower as versions pile up. Gating it on `dataset.version_id() % N` cut cleanup walks
@@ -342,9 +405,40 @@ analogue on object storage. Mechanism, verified at `v11.0.0-beta.2`:
   when nothing will consume it (`:1653-1657`). So a non-stable-row-id dataset with **no**
   address-style index pays no remap cost at all - the "every compaction rewrites every index
   entry" rule only bites when such an index actually exists.
+- **Compaction non-convergence is confined to the reencode path.** Candidacy is purely
+  `physical_rows < target_rows_per_fragment` (`rust/lance/src/dataset/optimize.rs:728`) - there
+  is no byte term anywhere, including bin splitting, and the in-tree `CompactionOptions` doc
+  admits it ("This does not affect which frgamnets need compaction", typo upstream). The
+  reencode writer flushes on whichever of the row target or byte cap fires first, so a
+  byte-capped task can emit fragments that are *still* under the row target and stay candidates
+  forever - one measured incident churned 31 rounds x 980 MiB of net-zero rewrites. Binary copy
+  cannot loop: it ignores `max_bytes_per_file` entirely and flushes on the row target at whole-
+  file granularity. Two caveats before you reach for it: `compaction_mode` defaults to
+  `Reencode`, so this divergence only appears after explicitly opting into
+  `TryBinaryCopy`/`ForceBinaryCopy`; and a **single blob column disqualifies binary copy for the
+  whole dataset**. `max_bytes_per_file` is also effectively inert when unset - the writer
+  default is 90 GB.
+- **`file_size_bytes` backfill is cheap on Lance-written stores.** `migrate_manifest` runs at
+  every commit and issues one `ObjectStore::size` (HEAD) per data file whose size is unknown
+  (`rust/lance/src/io/commit.rs:839`), in parallel. Lance's own writers set the field at write
+  time, so on a Lance-written store the cost is zero; it only bites data files adopted from
+  elsewhere. The larger hidden cost in the same area is that **one** fragment missing
+  `physical_rows` forces `migrate_fragments` across all fragments.
 
 ## Read path and query shaping
 
+- **A latent timezone smell in scalar-index coercion - worth knowing, not currently a bug.**
+  `safe_coerce_scalar`'s same-unit arm is
+  `DataType::Timestamp(TimeUnit::Microsecond, _) => Some(value.clone())`
+  (`rust/lance-datafusion/src/expr.rs:302`): when the literal's time unit already matches the
+  column's, it returns the literal **unchanged, discarding the target timezone**. The
+  other-unit branches clone the timezone correctly. Today this is harmless - at the pinned
+  `datafusion-common` 54.x, `ScalarValue::partial_cmp` for two same-unit timestamps ignores the
+  timezone entirely, so ZoneMap range pruning compares values correctly. It is worth tracking
+  because there are **no timezone tests anywhere under `rust/lance-index/src/scalar/`**, and the
+  arm has been untouched since 2024: a future DataFusion that makes `partial_cmp` timezone-aware
+  would turn this into silently-pruned zones. If you see a tz-aware timestamp predicate
+  under-returning on a ZoneMap-indexed column, check this first - and pin your DataFusion.
 - **Answer metadata questions from the manifest, never from a column scan.**
   `count_rows("col IS NOT NULL")` reads the entire column (Lance keeps no per-column null
   metadata to short-circuit it) - on a wide text column that was ~133 MB of reads per
@@ -442,14 +536,15 @@ not in release notes:
   reports transient storage failures as `TableNotFound` (PR #7931) - a create-or-open path that
   treated that error as "absent" could previously overwrite a live table on a 503, and now sees
   `Throttling` / `ServiceUnavailable` / `Internal` instead.
-- **crates.io carries finals only.** The newest published crate is `lance 9.0.1` (2026-08-06);
+- **crates.io carries finals only.** The newest published crate is `lance 10.0.0` (2026-08-07);
   every beta and rc exists as a git tag with no crate. Pinning a beta means a git dependency,
   which also means no crates.io yank signal if one turns out bad.
-- **Do not assume the previous major ever shipped a final.** The auto-bump has now fired on two
-  consecutive dev lines, and *neither* `v9.1.0` nor `v10.1.0` was ever released; `v10.0.0` never
-  got a final either, stopping at `v10.0.0-rc.3` on `release/v10.0`. "Upgrade to the latest
-  major" is not a valid plan without checking which majors actually have finals - as of
-  `v11.0.0-beta.2` that is `v9.0.1` and below.
+- **Do not assume a given major shipped a final.** The auto-bump has now fired on two
+  consecutive dev lines, and *neither* `v9.1.0` nor `v10.1.0` was ever released. `v10.0.0` **did**
+  ship a final (2026-08-08, on `release/v10.0`) - note that finals are cut on `release/vX.Y`
+  branches, so "not an ancestor of `main`" is normal and not a sign the release is unofficial.
+  "Upgrade to the latest major" is still not a valid plan without checking which majors actually
+  have finals - as of `v11.0.0-beta.6` that is `v10.0.0` and below.
 - **v11 changes fragment-id semantics** (PR #8206). Overwrite no longer restarts ids at 0, and
   any commit producing duplicate ids is now rejected. Two audit items on a bump: code that reads
   a fragment by a hardcoded id after an overwrite, and any dataset written by Lance 0.16 or

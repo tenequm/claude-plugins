@@ -1,8 +1,8 @@
 # Lance v11 reference - table format (sections 5-10)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.2`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -255,6 +255,24 @@ implementation seeing an unknown flag must return "unsupported" (`docs/src/forma
 | 4 | `FLAG_USE_V2_FORMAT_DEPRECATED` | Deprecated, unused |
 | 8 | `FLAG_TABLE_CONFIG` | Table config present in the manifest |
 | 16 | `FLAG_BASE_PATHS` | Dataset uses multiple base paths |
+| 32 | `FLAG_DISABLE_TRANSACTION_FILE` | Transaction recorded in the manifest, not a separate `.txn` file (writer-only) |
+| 64 | `FLAG_UNSTABLE_DATA_OVERLAY_FILES` | Fragments may carry data overlay files; **unstable** - release builds reject it unless explicitly opted in |
+| 128 | `FLAG_MEM_WAL_INDEX_CATCHUP` | `index_catchup` is maintained on this table, so an index absent from it is *not* caught up (v11) |
+
+**Flags at or above 256 are unknown** and must be rejected as "unsupported" - the boundary
+moved from 128 in v11 when bit 128 was allocated. Bits 32 and 64 existed in Rust before v11 but
+were undocumented until the v11 docs catch-up.
+
+`FLAG_MEM_WAL_INDEX_CATCHUP` (v11, #8263) **inverts the meaning of a missing entry**. Without
+the bit, an absent `index_catchup` entry means "fully caught up". With it, absence means the
+index is *not* known to be caught up, so the shard's SSTables must be retained until some commit
+records that it has. A reader lacking the bit would therefore answer an index-only query without
+the SSTables holding the newest rows, and a writer lacking it would change an index without
+invalidating the recorded catch-up position - so **both** must refuse the table.
+
+**Setting the bit is one-way.** Once SSTables have stopped being served against a recorded
+catch-up position, reading absence as "caught up" again could drop rows only those SSTables
+still hold, so the bit is never cleared as a rollback.
 
 ### Tags
 
@@ -315,6 +333,26 @@ built at table load by aggregating all fragments' sequences.
 **Change data feed** (stable row IDs only): each row tracks `created_at_version` and
 `last_updated_at_version`, queryable via SQL predicates on `_row_created_at_version` and
 `_row_last_updated_at_version` to find rows inserted or updated between two versions.
+
+### Stable row IDs in hand-assembled transactions
+
+If you build fragments yourself and commit them (distributed write, Ray/Spark workers), stable
+row IDs stop being automatic and become **your** responsibility. Three rules, all of them
+silent-failure modes if broken (`docs/src/guide/distributed_write.md`):
+
+- **Populate `row_id_meta` on every fragment you write.** A fragment written without it commits
+  successfully while **silently giving every rewritten row a fresh identity**, breaking `_rowid`
+  for anything downstream that depends on it. There is no error.
+- **Never mint row ids yourself.** Ids come from a counter in the manifest, and a commit that
+  loses a race is retried against the version that won - which may have consumed the very ids
+  you picked. The commit assigns them after conflict resolution.
+- **Leave `created_at_version_meta` and `last_updated_at_version_meta` as `None`.** Lance
+  derives both at manifest-build time; supplying them is not needed.
+
+Build the metadata with `lance.fragment.RowIdSequence` (v11, #8356). Duplicate ids are now
+rejected outright - previously `[1, 1, 2]` silently encoded to `[1]`, because the segment
+encodings represent a sorted run as a range plus its holes, so a repeated value became a shorter
+sequence with a spurious hole.
 
 ---
 
@@ -402,6 +440,14 @@ changes row addresses - **unless a fragment reuse index or stable row IDs are in
 decouple logical identity from physical address and let those operations proceed without
 conflict.
 
+**`preserves_nullability` on `Project` / `Merge`** (v11, #8347, `protos/transaction.proto:152,
+164`). The default `false` means "this operation makes no nullability assertion". A nullability
+*tightening* must **not** set it: the producer proved the claim by scanning at its read version,
+so a concurrent write can falsify it - which is why such a projection now **conflicts with any
+value-write in either commit order**. The hole this closed: `alter_columns` proved NOT NULL by
+scanning, then committed a `Project` that conflicted with nothing, so a write racing the scan
+could land nulls that then fail to read under the tightened schema.
+
 **Dataset *creation* is not covered by any of this.** OCC protects *commits*; the create path
 has no retry loop at all - `do_commit_new_dataset` carries an in-repo
 `// TODO: Allow Append or Overwrite mode to retry using` comment
@@ -420,13 +466,22 @@ The commit strategy is pluggable via the `CommitHandler` trait. Routing by URI s
 
 | Scheme | Handler |
 |--------|---------|
-| `file` (non-Windows), `s3`, `gs`, `az`, `abfss`, `oss`, `cos`, `tos`, `memory`, `shared-memory`, `goosefs` | `ConditionalPutCommitHandler` (`rust/lance-table/src/io/commit.rs:1115-1116`) |
+| `file` (non-Windows), `s3`, `gs`, `az`, `abfss`, `oss`, `tos`, `memory`, `shared-memory`, `goosefs` | `ConditionalPutCommitHandler` (`rust/lance-table/src/io/commit.rs:1115-1116`) |
+| `cos` (Tencent) | `TencentCosCommitHandler` - **fails closed**, see below (v11, #8369) |
 | `file` (Windows) | `RenameCommitHandler` |
 | `s3+ddb` | `ExternalManifestCommitHandler` (DynamoDB; requires the `dynamodb` feature) |
 | anything else | `UnsafeCommitHandler` (no concurrency check; logs a warning) |
 
 `goosefs` joined that list in v11 (PR #8134); `abfss`, `tos`, and `shared-memory` were already
 routed there before v10 despite earlier editions of this table omitting them.
+
+**Tencent COS is the one store that cannot self-coordinate** (v11, #8369). COS silently ignores
+put-if-not-exists on buckets that have *ever* had versioning enabled - even if versioning is now
+suspended - so under the old `ConditionalPutCommitHandler` routing two concurrent writers could
+both report success while one manifest overwrote the other. `cos://` now fails closed: a write
+**requires** a custom distributed `commit_lock` or a custom `CommitHandler`, and errors without
+one. If you have been writing to COS on an older Lance, treat past concurrent commits as
+suspect.
 
 `ConditionalPutCommitHandler` is the current default for nearly all stores. It uses the
 object store's native conditional write (`PutMode::Create`, i.e. `If-None-Match: *`):
@@ -472,6 +527,14 @@ Removed with it: `CacheBackend::invalidate_prefix`, `LanceCache::keys`, `CacheKe
 `Session::metadata_cache_keys`. Migration: "Replace `with_backend_and_prefix` with
 `with_backend(...).with_key_prefix(...)`." New exports: `CacheKeySchema`, `CacheNamespace`,
 `InternalCacheKey`, `KeyBuilder`, plus `QuickCacheBackend` and `recommended_cache_shards`.
+
+**v11 added a component to the Row Id Sequence key** (#8078): it is now
+`Dataset URI, fragment_id, row_id_meta`, up from `Dataset URI, fragment_id`. This was a
+correctness fix, not a tuning change - keyed on `fragment_id` alone, a `WriteMode::Overwrite`
+against a shared `Session` served the *previous* generation's sequence, corrupting stable row
+ids. See the data-loss roundup in `changelog-v7-v11.md`. Java can now also select a registered
+native cache backend by URI (e.g. `moka://?capacity=1048576`) or `CacheBackendConfig`, mutually
+exclusive with the size options (#8446).
 
 **quick_cache is now the default backend** for both the index cache (PR #7953) and the metadata
 cache (PR #8013) - hard-wired in `Session::new`, with no env var or Cargo feature to opt out.

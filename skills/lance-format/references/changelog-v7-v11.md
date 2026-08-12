@@ -1,16 +1,17 @@
 # Lance changelog - v7 -> v11 (section 14)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.2`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
 **Release-line shape.** The major is bumped by a bot, not a human: `ci/publish_beta.sh:65,87`
 re-roots at `MAJOR+1` whenever any PR since the release root carries the GitHub
 `breaking-change` label (`ci/check_breaking_changes.py:31`). The marker is the **label**, not a
-conventional-commit `!` - of the nine labeled PRs in this window (#8024, #8025, #8026, #8051,
-#8095, #8159, #8172, #8188, #8206) only two carry `!` in the subject. It has now fired on two
+conventional-commit `!` - of the 13 labeled PRs in the v11 window (#8024, #8025, #8026, #8027,
+#8028, #8051, #8095, #8159, #8172, #8188, #8206, #8347, #8360) only two carry `!` in the
+subject. It has now fired on two
 consecutive lines: `9.1.0-beta.*` -> `10.0.0-beta.*` (2026-07-23), then `10.1.0-beta.*` ->
 `11.0.0-beta.*` (2026-08-05, `649076df1 chore: bump to 11.0.0-beta.1 based on breaking change
 detection`). So **neither `v9.1.0` nor `v10.1.0` was ever released**, and `v10.1.0-beta.2` is
@@ -18,18 +19,22 @@ the direct ancestor of `v11.0.0-beta.1`, one bump commit apart. The re-root renu
 `release-root/10.1.0-beta.N` and `release-root/11.0.0-beta.N` point at the same commit
 (`ee0a60d0c`), both recording `Base: 10.0.0-rc.1`.
 
-**`v10.0.0` final was never tagged.** That line stopped at `v10.0.0-rc.3` (2026-08-02) on
-`release/v10.0`, which forked at `v10.0.0-beta.7` and took one substantive backport
-(`10d0c9f2e fix: backport encoding and FTS fixes to release/v10.0`, #8146). It is not an
-ancestor of `main`; `v10.0.0-beta.7` **is** an ancestor of `v11.0.0-beta.2`, but `v10.0.0-rc.3`
-is not.
+**`v10.0.0` final was tagged on 2026-08-08** - an annotated, PGP-signed tag ("Release version
+10.0.0") on `release/v10.0`, one commit past `v10.0.0-rc.3` (2026-08-02). That branch forked at
+`v10.0.0-beta.7` and took one substantive backport (`10d0c9f2e fix: backport encoding and FTS
+fixes to release/v10.0`, #8146). It is **not** an ancestor of `main` - finals are cut on
+`release/vX.Y` branches, so that is normal. `v10.0.0-beta.7` **is** an ancestor of
+`v11.0.0-beta.6`, but `v10.0.0-rc.3` and `v10.0.0` are not.
 
-**`v9.0.1` is the stable pin** (2026-08-06, superseding `v9.0.0`, 2026-07-24), shipped with five
-sibling patch finals that day - `v8.0.1`, `v7.1.0`, `v6.1.0`, `v4.0.2`, `v3.0.2` - each on its
-own `release/vX.Y` branch. `v5.0.0` still has no final despite `v5.0.0-rc.2`. crates.io
-publishes **finals only** (`max_stable_version` = `9.0.1`; no 10.x, no 11.x, no pre-releases of
-any kind), so any beta pin is a git dependency; beta artifacts publish to fury.io
-(`.github/workflows/publish-beta.yml:114`).
+**`v10.0.0` is the stable pin** (2026-08-08, superseding `v9.0.1`), and it is what GitHub
+Releases marks `Latest`. `v9.0.1` (2026-08-06, superseding `v9.0.0`, 2026-07-24) shipped with
+five sibling patch finals that day - `v8.0.1`, `v7.1.0`, `v6.1.0`, `v4.0.2`, `v3.0.2` - each on
+its own `release/vX.Y` branch. `v5.0.0` still has no final despite `v5.0.0-rc.2`. crates.io
+publishes **finals only** (`max_stable_version` = `10.0.0`; no 11.x, and the only pre-release
+among ~186 versions is the ancient `0.0.1-alpha0`); PyPI `pylance` is likewise at `10.0.0`. So
+any beta pin is a git dependency; beta artifacts publish to fury.io
+(`.github/workflows/publish-beta.yml:114`) under the renamed org,
+`https://pypi.fury.io/lance-format`.
 
 ## Contents
 
@@ -43,7 +48,9 @@ any kind), so any beta pin is a git dependency; beta artifacts publish to fury.i
 - [The v9.0.0-beta.16 -> v9.0.0-beta.18 delta](#the-v900-beta16---v900-beta18-delta)
 - [The v9.0.0-beta.18 -> v9.1.0-beta.8 delta](#the-v900-beta18---v910-beta8-delta)
 - [The v9.1.0-beta.8 -> v10.0.0-beta.7 delta](#the-v910-beta8---v1000-beta7-delta)
-- [The v10.0.0-beta.7 -> v11.0.0-beta.2 delta (current tag)](#the-v1000-beta7---v1100-beta2-delta-current-tag)
+- [The v10.0.0-beta.7 -> v11.0.0-beta.2 delta](#the-v1000-beta7---v1100-beta2-delta)
+- [The v11.0.0-beta.2 -> v11.0.0-beta.6 delta (current tag)](#the-v1100-beta2---v1100-beta6-delta-current-tag)
+- [v11 silent-corruption and wrong-results fixes](#v11-silent-corruption-and-wrong-results-fixes)
 
 Other files: `format-file.md` (1-4), `format-table.md` (5-10), `indexes.md` (11-12),
 `ops.md` (13, 15, 16).
@@ -61,17 +68,18 @@ on the `release/v9.0` branch, later `v9.0.1` on 2026-08-06 - **the current stabl
 **v9.1 line opened** at `9.1.0-beta.0` when `v9.0.0-rc.1` was cut and ran to `9.1.0-beta.8`; on
 2026-07-23 that same dev line was **mechanically re-rooted as `10.0.0-beta.*`** by the
 breaking-change detector, so `v9.1.0` was never tagged; the **v10 line** ran to
-`v10.0.0-beta.7`, then stabilization forked to `release/v10.0` and stopped at `v10.0.0-rc.3`
-(**`v10.0.0` final was never tagged either**) while `main` opened `10.1.0-beta.1/2`; and on
-2026-08-05 **that** line was re-rooted in place as `11.0.0-beta.*`, so `v10.1.0` was never
-tagged. This section keeps
+`v10.0.0-beta.7`, then stabilization forked to `release/v10.0`, reached `v10.0.0-rc.3` and
+shipped **`v10.0.0` final on 2026-08-08 - the current stable pin** - while `main` opened
+`10.1.0-beta.1/2`; and on 2026-08-05 **that** line was re-rooted in place as `11.0.0-beta.*`, so
+`v10.1.0` was never tagged. This section keeps
 the full v7 history below (still useful context), the **v7.2.0-beta.5 -> v8.0.0-beta.9 delta**
 (the v7->v8 major boundary), the **v8.0.0-beta.9 -> v8.0.0-beta.14 delta**, the
 **v8.0.0-beta.14 -> v9.0.0-beta.10 delta** (the v8->v9 major boundary), the
 **v9.0.0-beta.10 -> v9.0.0-beta.16 delta**, the **v9.0.0-beta.16 -> v9.0.0-beta.18 delta**,
 the **v9.0.0-beta.18 -> v9.1.0-beta.8 delta**, the **v9.1.0-beta.8 -> v10.0.0-beta.7 delta**,
-and finally the **v10.0.0-beta.7 -> v11.0.0-beta.2 delta** (the current tag - most important for
-a v11 reader) at the very end.
+the **v10.0.0-beta.7 -> v11.0.0-beta.2 delta**, and finally the **v11.0.0-beta.2 ->
+v11.0.0-beta.6 delta** (the current tag - most important for a v11 reader) plus a consolidated
+list of v11's silent-corruption and wrong-results fixes at the very end.
 
 **The v6 -> v7 breaking change.** `feat!: make dataset object store access base-aware`
 (PR #6647, commit `456198cd`), immediately followed by the automated bump to `7.0.0-beta.1`.
@@ -535,7 +543,7 @@ root workspace, `/python`, and `/java/lance-jni` (#7983, #7984, #7982) - "proto:
 too many gaps in assembler". Plus bulk Dependabot cargo-group bumps (38 root, 28 python,
 27 java-jni).
 
-### The v10.0.0-beta.7 -> v11.0.0-beta.2 delta (current tag)
+### The v10.0.0-beta.7 -> v11.0.0-beta.2 delta
 
 128 commits. The bump is again **mechanical** - nine PRs carried the `breaking-change` label
 (#8024, #8025, #8026, #8051, #8095, #8159, #8172, #8188, #8206), of which only two carry `!` in
@@ -613,3 +621,136 @@ crate's "Greek implementation can retain stale UTF-8 byte offsets after shorteni
 panic while slicing the shortened string." `frostem` is generated from current upstream Snowball
 and exposes the same 18 algorithms. `strum` and the direct `goosefs-sdk` dependency were dropped;
 `crc32c` left the lockfile and `opendal-http-transport-reqwest` entered it.
+
+---
+
+### The v11.0.0-beta.2 -> v11.0.0-beta.6 delta (current tag)
+
+94 commits, 90 PRs, **four `breaking-change`-labeled**: #8027, #8028, #8347, #8360. This brings
+the full v11 delta from `v10.0.0-beta.7` to **222 commits and 13 breaking PRs** (#8024, #8025,
+#8026, #8027, #8028, #8051, #8095, #8159, #8172, #8188, #8206, #8347, #8360).
+
+**Breaking:**
+
+- **`LanceFileVersion` lost its ordering** (#8028). `PartialOrd`/`Ord` are gone, so
+  `v >= LanceFileVersion::Next` no longer compiles, and both `From` conversions between selector
+  and concrete version were deleted. Index readers, writers, shufflers and distributed mergers
+  now take an exact `ConcreteFileVersion`. Per the PR: "Remaining version decisions are
+  exhaustive matches at declared boundaries rather than `>=`, `max`, or selector round-trips."
+- **`LanceFileVersion::resolve` changed signature** (#8027):
+  `pub fn resolve(&self) -> Self` became `pub const fn resolve(self) -> ConcreteFileVersion`.
+  Deleted: `iter_non_legacy()`, `support_add_sub_column()`, `support_remove_sub_column(&Field)`.
+  Added: `stable_file_version() -> ConcreteFileVersion` (V2_1), `next_file_version()` (V2_3),
+  `ConcreteFileVersion::to_selector()` and `::is_unstable()`. #8027 also centralized dataset
+  version policies.
+- **`Operation::Project` / `Merge` gained `preserves_nullability: bool`** (#8347). See section
+  9.2 - a nullability tightening must not set it, and setting it makes the operation conflict
+  with concurrent value-writes in either commit order.
+- **`is_maintainable_index_type(&str)` removed** (#8360), replaced by
+  `validate_maintained_indexes(dataset, index_names) -> Result<()>`. Type-URL filtering was
+  unsound: an IVF-PQ over `FixedSizeList<Float64>` passed the check and then made the table
+  unwritable. The replacement is all-or-nothing - it "reports the first index it cannot maintain
+  rather than returning a usable subset". Error text: "index '{}' has type {}, which the MemWAL
+  cannot maintain. Supported: BTree, Inverted, Vector".
+
+**Format-level:**
+
+- **New manifest feature flag `FLAG_MEM_WAL_INDEX_CATCHUP = 128`** (#8263); `FLAG_UNKNOWN` moved
+  128 -> 256. Reader and writer must both hold it. Setting it is one-way. Section 7.
+- **Transaction proto field 9 deprecated** (#7432): `updated_fragment_offsets` gives way to
+  field 10 `updated_fragment_offset_bitmaps`, "Per-fragment matched offsets as portable
+  RoaringBitmap bytes". Writers emit field 10 only; readers prefer 10, falling back to 9 for
+  manifests written before the change.
+- `MemWalIndexDetails.index_catchup` added as `table.proto` field 10.
+- **`IndexCatchupAdvance` never shipped.** #8263 added the message and
+  `CreateIndex.mem_wal_index_catchup_advances`; #8481 deleted both within the same beta window,
+  replacing them with catch-up derived from the version the transaction read. Present at
+  `v11.0.0-beta.5`, absent at `v11.0.0-beta.6`.
+
+**Net-new:**
+
+- MemWAL backpressure is observable: `MemTableStats.frozen_count` / `frozen_bytes` and
+  `ShardWriter::backpressure_stats()` (#8241) - "Heap bytes still owed to flush".
+- MemWAL splits logical from storage schema, widening non-PK top-level fields to nullable, so
+  `ShardWriter::delete` no longer requires nullable base columns (#8352).
+- `write_fragments(session=...)` / Java `WriteFragmentBuilder.session(...)` (#8034); a foreign
+  session against a dataset-backed target is rejected.
+- `analyze_plan` appends `tokenized_query=` to FTS leaves (#8414); `explain_plan` deliberately
+  unchanged. Python `lance.tokenize(...)` / `lance.FtsToken(text, position)` preview tokenization
+  with no dataset or index (#8415).
+- `LanceFragment.validate()` (#8428) validates one fragment rather than the whole dataset;
+  `Dataset::validate()` gained stable-row-id invariant checks (#8258, no-op when unused).
+- `BlobFile.read_ranges(ranges) -> list[bytes]` (#8319) - "The underlying physical reads may be
+  reordered, coalesced, or split for efficiency."
+- `lance.fragment.RowIdSequence` (#8356); duplicate ids now rejected.
+- `LanceOperation.Update` carries `updated_fragment_offsets` in Python (#8447) and
+  `updatedFragmentOffsets` in Java (#6748).
+- Java: `Session.Builder` selects registered native cache backends by URI or
+  `CacheBackendConfig`, e.g. `moka://?capacity=1048576` (#8446); `Index.getSizeBytes()` and
+  `IndexDescription.getSegments()` (#8355).
+- Blob v2 supported in `FileFragment::update_columns` (#8344).
+
+**Performance / build:**
+
+- FTS same-column `MUST + SHOULD` scores optional clauses lazily (#8448); conjunction
+  confirmations ordered by `match_cost`, measured **200 -> 120** two-phase `matches()` calls per
+  query (#8354).
+- Release JNI cdylib stripped: `liblance_jni.so` linux-x86-64 **278.35 MB -> 221.0 MB**
+  (-20.6%), `.dynsym` preserved (#8314).
+- x86_64-linux build baseline dropped `target-cpu=haswell` -> **`x86-64-v2`** (#8377), so
+  binaries no longer trap on import on pre-AVX2 hosts.
+- The `time = "=0.3.47"` pin was removed from `lance-namespace-impls` (#8296).
+- `retain_versions=0` now errors instead of panicking (#8467); deleting a branch referenced by a
+  tag is rejected (#8365).
+
+---
+
+### v11 silent-corruption and wrong-results fixes
+
+Eleven fixes in the v11 line address failures that produced **no error** - wrong data, missing
+rows, or a hang. Each names the condition that triggers it, so you can tell whether a dataset
+written on an earlier v11 beta is affected.
+
+**Data-loss class:**
+
+- **Cleanup irreversibly deleted live overlay data** (#8267). Six manifest/fragment walkers read
+  only `Fragment::files` and missed overlay data files; `process_manifest` builds the cleanup
+  keep set, "so an overlay old enough to be a deletion candidate is irreversibly deleted from the
+  live dataset". Affects datasets using data overlay files (`FLAG_UNSTABLE_DATA_OVERLAY_FILES`).
+- **A fragment-less manifest could be published** (#8438). `Operation::UpdateMemWalState` rebuilt
+  its manifest without `final_fragments`, "so the commit publishes a manifest with **no
+  fragments**. Every row in the table disappears." MemWAL tables only.
+- **Stale row-id sequences after overwrite** (#8078). `RowIdSequenceKey` was keyed on
+  `fragment_id` alone, so after `WriteMode::Overwrite` with a shared `Session`, reads got the
+  previous generation's sequence: "row ids are reported for rows that no longer exist, row counts
+  disagree with the manifest, compaction rechunks more ids than the fragments physically hold,
+  and the same id can look live in two fragments at once." The cache key now includes
+  `row_id_meta`.
+- **Tencent COS double-commit** (#8369) - see section 9.3.
+- **MemWAL compaction generation mixup** (#8262): progress kept the larger generation, so a late
+  job's rows were written under another job's marker - "mutations under a generation it did not
+  produce, and anything reading only the marker could then stop serving SSTables whose rows were
+  never inserted."
+- **Stale `index_section` offset** (#8308): a manifest reused after its last index was dropped
+  kept the prior offset, which "would point at unrelated bytes in the new manifest file".
+- **Dictionary index width mismatch** (#8220): nullable dictionary normalization could widen
+  indices to UInt32 while the page stayed declared Int8.
+
+**Wrong-results class** - these directly contradict "this index returns correct results":
+
+- **A KNN row returned twice, one ranked by a stale vector** (#8342).
+  `optimize_indices(num_indices_to_merge >= 1)` "can leave two copies of the same row in a vector
+  index, and a KNN query then returns that row twice, one ranked by its pre-update vector."
+- **BloomFilter matches silently disappeared** (#8223): after deferred-remap compaction the index
+  "returned the original zone ranges without applying that mapping", so matches on moved rows
+  vanished.
+- **Every approximate cosine distance was shifted** (#8393): IVF_RQ's query-factor match "still
+  grouped Cosine with Dot and subtracted `1.0`".
+- **FTS could prune a competitive document** (#8473) - WAND score upper bounds were not
+  conservative against f32 accumulation order. Separately, fragment-restricted FTS scans used
+  only the first segment's coverage bitmap, so "matching rows in later segments could be filtered
+  out" (#8211).
+- **A query could hang indefinitely** (#8350): an IVF delta taking the no-more-probes early
+  return never decremented the late-search barrier. "Every delta must reach the barrier, even if
+  it has no partitions left to search, so that siblings waiting for the initial search can
+  proceed."

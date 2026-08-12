@@ -7,6 +7,68 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-12
+
+### Changed
+
+- Re-grounded from `v11.0.0-beta.2` to `v11.0.0-beta.6` (94 commits, 4 newly
+  `breaking-change`-labeled PRs: #8027, #8028, #8347, #8360).
+- **Breaking (upstream):** the stable pin moved `v9.0.1` -> `v10.0.0`. `v10.0.0` final **was**
+  tagged (2026-08-08, annotated, on `release/v10.0`, not an ancestor of `main`); the skill's
+  previous claim that it never was is corrected everywhere it appeared. crates.io and PyPI both
+  now carry `10.0.0`.
+- **Breaking (format):** the v11 delta's "manifest feature flags unchanged" is corrected -
+  `FLAG_MEM_WAL_INDEX_CATCHUP` (bit 128) is new and `FLAG_UNKNOWN` moved 128 -> 256. The
+  feature-flag table gained bits 32, 64, and 128 (32 and 64 existed before v11 but were
+  undocumented).
+- v11 delta figures re-grounded: 128 commits / nine breaking PRs (accurate at beta.2) -> 222
+  commits / 13 breaking PRs at beta.6.
+- Vector-index storage spec: `__ex_codes` -> `__blocked_ex_codes` with a new sizing formula
+  (readers still accept the old column); `__pq_code` and `_rabit_codes` sizings corrected; all
+  storage columns are now nullable.
+- `cos://` no longer routes to `ConditionalPutCommitHandler` - it has a dedicated
+  `TencentCosCommitHandler` that fails closed.
+- Part B's governing rule softened from "don't tune the store" to "minimize remote calls first",
+  presenting upstream's new remote-scan tuning table as a legitimate second move.
+- Refreshed the 13 stale files in the `references/docs/` mirror; all directory counts verified
+  unchanged (45 md + 4 svg).
+
+### Added
+
+- Scan concurrency controls (`fragment_readahead`, `batch_readahead`, `scan_in_order`,
+  `io_buffer_size`) with upstream's suggested starting values and the two counter-intuitive
+  caveats (`scan_in_order` does not serialize fragment reads; lowering `batch_size` may not
+  shrink the request).
+- FTS tokenization surface: `lance.tokenize` / `FtsToken`, the `max_token_length` tri-state,
+  `analyze_plan` tokenized-query output, and the conditions under which `CompoundQueryExec`
+  abandons the posting-backed scorer.
+- Stable row ids in hand-assembled distributed transactions (`row_id_meta`, never minting ids,
+  leaving `*_version_meta` as `None`); the Tencent COS `commit_lock` requirement; nested Blob v2
+  fields; `preserves_nullability` and its conflict rule.
+- A consolidated roundup of v11's eleven silent-corruption and wrong-results fixes, each with its
+  triggering condition.
+- New changelog section for the `v11.0.0-beta.2 -> v11.0.0-beta.6` delta.
+- Field-verified operational findings, each re-grounded at beta.6 before inclusion: the FTS
+  `Fixed32` empty-segment merge failure (scoped to `format_version=1`/legacy), bfloat16 rejection
+  on both build and query paths, the three-round-trip commit anatomy, `merge_insert` composite-key
+  indexing, compaction convergence, the unindexed-backlog API, and ngram relevance/RAM cost.
+
+### Fixed
+
+- `MAX_INLINE_TRANSACTION_BYTES` is gated on `#[cfg(not(test))]`, not "release builds", so every
+  non-test build gets 20 MiB.
+- Mirror-exclusion note: Spark/Ray/Trino were deleted from the checked-in nav (#8419) rather than
+  assembled at build time.
+- Part A provenance: `guide/performance.md` is no longer byte-unchanged since `v9.1.0-beta.8` -
+  it changed at `v11.0.0-beta.4`.
+- `maintenance.md` now documents a third expected pre-commit deviation (a trailing newline added
+  to the `.drawio.svg`).
+- Corrected a pond-derived lead before publication: the ZoneMap/tz-aware-timestamp issue is a
+  latent coercion smell, **not** a "returns 0 rows" bug - the pinned `datafusion-common` 54.x
+  `partial_cmp` is timezone-blind, so pruning is currently correct.
+
+Verified against: lance-format/lance@v11.0.0-beta.6
+
 ## [0.14.1] - 2026-08-07
 
 ### Fixed

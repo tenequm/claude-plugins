@@ -1,8 +1,8 @@
 # Lance v11 reference - object store, capabilities, source map (sections 13, 15, 16)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.2`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.2/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -151,7 +151,7 @@ Disable globally with `LANCE_USE_VERSION_HINT=0`.
 
 ## 15. Capability matrix
 
-What Lance can and cannot do at `v11.0.0-beta.2`.
+What Lance can and cannot do at `v11.0.0-beta.6`.
 
 **Storage and format**
 
@@ -232,7 +232,7 @@ registered `fts` table function (`ctx.register_udtf("fts", ...)`,
 
 ## 16. Source map
 
-Where to look in `lance-format/lance` at `v11.0.0-beta.2`.
+Where to look in `lance-format/lance` at `v11.0.0-beta.6`.
 
 | Topic | Path |
 |-------|------|
