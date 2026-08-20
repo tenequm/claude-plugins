@@ -2,7 +2,7 @@
 name: swift-macos
 description: Covers macOS app development with Swift 6.3, SwiftUI, SwiftData, Swift Concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, and app distribution. Use when building native Mac apps - windows, scenes, navigation, menus and toolbars, SwiftData models and queries, modern concurrency, on-device AI, testing, screen and audio capture, MenuBarExtra apps, AppKit bridges, login items, process monitoring, or App Store and Developer ID notarization.
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
   upstream: "swift@6.3.3, xcode@26.6, macos@26.6.2"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/swift-macos
@@ -433,9 +433,11 @@ config.sampleRate = 48000
 config.channelCount = 2
 config.excludesCurrentProcessAudio = true
 
-// Audio-only: minimize video overhead
+// Audio-only: throttle the video pipeline (it always runs). minimumFrameInterval is a
+// MINIMUM gap between frames - 1/Int32.max is ~0s, i.e. native refresh rate (60+ fps
+// of discarded frames and a full-screen recomposite each). Use 1 fps.
 config.width = 2; config.height = 2
-config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale.max)
+config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
 
 let stream = SCStream(filter: filter, configuration: config, delegate: self)
 try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: nil)

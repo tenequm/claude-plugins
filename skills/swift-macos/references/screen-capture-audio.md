@@ -514,9 +514,11 @@ let hdrImage = try await SCScreenshotManager.captureImage(
 
 **ScreenCaptureKit has no documented audio-only mode, but `.audio`-only streams work in practice.** You can create an `SCStream` with `capturesAudio = true` and attach only `addStreamOutput(_:type:.audio,...)` - no `.screen` output. Audio buffers flow. Validated across macOS 14/15/26 in multiple shipping apps (Aperture, Blackbox across v0.3/v0.4/v0.6/v0.8, etc.).
 
-Two caveats that are real but not fatal:
-1. The framework logs `stream output NOT found. Dropping frame` to the console for every video frame because the **video pipeline still runs** internally even without a `.screen` consumer. Purely cosmetic noise, but it'll appear in Console.app.
-2. That same still-running video pipeline costs CPU/GPU. Mitigate by collapsing the video work to a stub (see below) even though you're not consuming it.
+Two caveats, and the second one is not cosmetic:
+1. The framework logs `stream output NOT found. Dropping frame` for every video frame when no `.screen` output is attached, because the **video pipeline still runs** internally. Attach a `.screen` output that ignores its buffers (on its own queue, not the audio queue) and the log line goes away.
+2. That still-running video pipeline costs real CPU: every frame is a WindowServer recomposite of the whole display. At the display's refresh rate on a 5K monitor this is ~15-20% of a core across the app, `replayd`, and WindowServer for the entire recording. Throttle it with `minimumFrameInterval` (below).
+
+**`minimumFrameInterval` trap.** The property is the *minimum time between frames*, so a larger value means fewer frames. `CMTime(value: 1, timescale: CMTimeScale.max)` - which reads like "infinite interval" - is ~0.5 ns, the smallest positive interval expressible, and the SDK documents `kCMTimeZero` as "capture at display's native refresh rate". It requests the *maximum* frame rate. One shipping recorder ran with that line from v0.8.0 to v0.9.1 before a user measured the 60 fps recomposite (blackbox#17). `CMTime(value: 1, timescale: 1)` is 1 fps; same shape as the `1/60` used for 60 fps elsewhere in this file.
 
 **Do not reach for CATap as the "zero-overhead" replacement without reading `core-audio-tap.md` first.** Production experience (one call-recorder shipped CATap in v0.7.0 and reverted to display-wide SCStream in v0.8.0 five days later) shows CATap has structural clock-fragility: its IO proc is driven by the hardware output clock, so when that clock is idle, pinned by Bluetooth HFP, or stalled, buffers stop flowing silently. Display-wide SCStream's clock comes from the OS-composited mix and is decoupled from hardware output, making it more robust for long-duration recording even with the cosmetic video-pipeline overhead. CATap is the right tool when you specifically need sub-20 ms capture latency (real-time AEC, live analysis); for disk-bound recording workloads (calls, meetings, lectures), SCStream wins on reliability.
 
@@ -529,13 +531,14 @@ config.sampleRate = 48000
 config.channelCount = 2
 config.excludesCurrentProcessAudio = true
 
-// Minimal video to avoid error logs
+// Minimal video: 2x2 at 1 fps. NOT 1/Int32.max - that is ~0s = native refresh rate.
 config.width = 2
 config.height = 2
-config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale.max)
+config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
 
-// For audio-only, add only the .audio output. For combined capture:
-try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: nil)
+// Subscribe .screen even for audio-only (ignore its buffers), or SCStream logs a
+// dropped frame per frame. Keep it off the audio queue so video can never delay audio.
+try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoQueue)
 try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
 ```
 
@@ -1177,7 +1180,7 @@ class AppAudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         config.excludesCurrentProcessAudio = true
         config.width = 2
         config.height = 2
-        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale.max)
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 fps, not 1/Int32.max
 
         writer = try AVAssetWriter(url: url, fileType: .m4a)
         audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [

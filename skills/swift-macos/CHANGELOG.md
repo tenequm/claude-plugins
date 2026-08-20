@@ -7,6 +7,13 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-20
+
+### Fixed
+
+- ScreenCaptureKit audio-only capture recommended `CMTime(value: 1, timescale: CMTimeScale.max)` for `minimumFrameInterval`. That reads like "infinite interval" but is ~0.5 ns - the smallest positive interval - so it requests the display's native refresh rate and burns ~15-20% of a core on WindowServer recomposites for the whole recording. Replaced with `CMTime(value: 1, timescale: 1)` (1 fps) in SKILL.md and screen-capture-audio.md, with an explicit note on the trap.
+- screen-capture-audio.md called the `stream output NOT found. Dropping frame` log "cosmetic" and left the video pipeline unaddressed. The fix is to attach a `.screen` output that discards its buffers on its own queue (never the audio queue) - documented in the snippet.
+
 ## [0.8.0] - 2026-08-20
 
 ### Fixed
