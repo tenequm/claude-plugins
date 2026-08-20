@@ -25,17 +25,17 @@ Each skill is a directory with a `SKILL.md` file plus optional references, scrip
 ## Install
 
 ```bash
-npx skills install tenequm/skills/<skill-name>
+npx skills add tenequm/skills@<skill-name>
 ```
 
 ## Usage
 
 ```bash
 # Install a skill from this repository
-npx skills install tenequm/skills/react-typescript
+npx skills add tenequm/skills@typescript-dev
 
 # Or download the latest raw bundle from GitHub Releases
-curl -LO https://github.com/tenequm/skills/releases/download/skills-latest/react-typescript.zip
+curl -LO https://github.com/tenequm/skills/releases/download/skills-latest/typescript-dev.zip
 ```
 
 Use the catalog below to pick a skill. Prefer ClawHub for normal installs. Use the zip bundles when you want a portable artifact or need to inspect the packaged files directly.
