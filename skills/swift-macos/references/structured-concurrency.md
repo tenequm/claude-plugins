@@ -65,7 +65,7 @@ Child tasks are automatically cancelled if the parent scope exits early. But tha
 struct TimeoutError: Error {}
 
 /// Race `operation` against a sleep; first to finish wins, the loser is cancelled.
-/// Stdlib equivalent `withDeadline` is proposed in SE-0526 (in review April 2026).
+/// Stdlib equivalent `withDeadline` is SE-0526, accepted with modifications 2026-07-29.
 func withTimeout<T: Sendable>(
     seconds: Double,
     operation: sending @escaping () async throws -> T
@@ -90,7 +90,7 @@ func loadWithTimeout() async throws -> Data {
 }
 ```
 
-`withThrowingTaskGroup` + sleep is the canonical pattern pending SE-0526 (`withDeadline`): https://github.com/swiftlang/swift-evolution/blob/main/proposals/0526-deadline.md. Do not reach for `swift-async-algorithms` — the timeout feature was explicitly pulled from that package in favor of the stdlib path.
+`withThrowingTaskGroup` + sleep is the canonical pattern until [SE-0526 `withDeadline`](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0526-deadline.md) ships - it was **accepted with modifications on 2026-07-29** and is not in the 6.3.3 toolchain, so keep the helper for now. SE-0526 expresses the limit as a composable absolute clock instant rather than a duration, cancelling the operation if it has not completed in time. Do not reach for `swift-async-algorithms` - the timeout feature was explicitly pulled from that package in favor of the stdlib path.
 
 **Caveat: the helper is cooperative.** Swift's concurrency runtime cannot forcibly stop a task that isn't observing cancellation. `group.cancelAll()` only flips the cancellation flag; if `operation` is a tight synchronous loop, a blocking C bridge, or any path without `try Task.checkCancellation()` / cancellation-aware suspension points, the TaskGroup scope still waits for it and the call hangs past `seconds`. Use this pattern for cancellation-cooperative work (`URLSession`, `Task.sleep`, most modern async APIs). For CPU-bound or C-bridged work, sprinkle `try Task.checkCancellation()` into the work at suspension-friendly granularity, or dispatch the work to a queue/thread that you can kill independently.
 

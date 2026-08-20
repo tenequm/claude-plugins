@@ -160,6 +160,15 @@ for await (bytes, total) in progress {
 
 Source: https://github.com/swiftlang/swift-evolution/blob/main/proposals/0475-observed.md. Docs: https://developer.apple.com/documentation/observation/observations
 
+### Advanced Observation Tracking (SE-0506, Swift 6.4)
+
+SE-0506 moved to **Implemented (Swift 6.4)** on 2026-07-28 - not in the pinned 6.3.3 toolchain, but it changes what the right answer will be. It adds two top-level interfaces:
+
+- `withObservationTracking(options:)` - the existing function plus an options parameter, so you can control tracking behaviour instead of getting exactly one fire-once callback.
+- `withContinuousObservationTracking` - a callback-based form with behaviour similar to `Observations`, for the common case where you want to keep observing rather than re-arming the tracker by hand.
+
+Until 6.4 ships, `Observations { }` remains the way to stream changes, and plain `withObservationTracking` remains fire-once - if you are re-registering it inside its own `onChange` closure today, that is the pattern SE-0506 replaces. Source: https://github.com/swiftlang/swift-evolution/blob/main/proposals/0506-advanced-observation-tracking.md
+
 ## Continuations
 
 Bridge callback-based APIs to async/await:

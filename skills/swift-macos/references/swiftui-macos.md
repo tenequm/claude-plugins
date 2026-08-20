@@ -447,7 +447,7 @@ struct NotesEditor: View {
 | `SettingsLink` | A button that opens Settings - correct across macOS versions, unlike hand-rolled selectors |
 | `defaultLaunchBehavior(.presented / .suppressed)` | Whether a scene opens at launch - the supported way to start windowless |
 | `WindowManagerRole` | Declares a scene's role to the window manager |
-| `windowResizeAnchor` | Which edge stays put when a window resizes programmatically |
+| `windowResizeAnchor` | **View** modifier (macOS 26+), not a Scene one: `windowResizeAnchor(_ anchor: UnitPoint?)` - the anchor point that stays fixed when the window resizes |
 | `WindowDragGesture` | Drag the window from arbitrary content, not just the title bar |
 
 `defaultLaunchBehavior(.suppressed)` is the clean replacement for the `LSUIElement`-plus-close-the-window dance when an app should start with no visible window but is not permanently an accessory.

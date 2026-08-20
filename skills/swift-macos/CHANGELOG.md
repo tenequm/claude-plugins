@@ -7,6 +7,48 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-20
+
+### Fixed
+
+- SKILL.md Relationships snippet and relationships-predicates.md Cascade example did not compile: `@Model` requires an explicit initializer, which neither had. Verified against the macOS 26.5 SDK.
+- models-schema.md model-inheritance snippet failed twice - `@Model` subclasses require explicit platform availability and an initializer - and the section carried no version gate at all. Subclassing is macOS 26.0+.
+- `.presentedWindowStyle(.automatic) // .fullScreen` in app-lifecycle.md: `WindowStyle` has no `.fullScreen` member. The complete SDK set is `.automatic`, `.titleBar`, `.hiddenTitleBar`, `.plain`.
+- `windowResizeAnchor` was documented as a Scene API taking an edge; it is a `View` modifier taking `UnitPoint?`.
+- `restorationBehavior` was labelled "(macOS 26)"; it is macOS 15.0.
+- `ContextOptions` is not in the macOS 26.5 SDK - it is macOS 27 beta - and was described as a trimming/retention policy; it configures prompt content. Section rewritten around `tokenCount(for:)`/`contextSize`, which do exist.
+- Three stale documentation links: the Foundation Models custom-adapter article was removed by Apple, and the privacy-manifest and `SCStreamErrorCode` URLs now redirect.
+- SE-0526 `withDeadline` status was "in review April 2026"; it was accepted with modifications on 2026-07-29.
+- `anyAppleOS` was listed as a Swift 6.4 feature; it compiles on 6.3.3 behind `-enable-experimental-feature AnyAppleOSAvailability`.
+- The App Store SDK-minimum requirement is now past tense ("Since April 28, 2026").
+
+### Changed
+
+- Current shipping macOS is 26.6.2 (was 26.6); Xcode 27 pinned to beta 5 (27A5237l) and macOS 27 to beta 6 (26A5416b), with Swift 6.4 noted as shipping inside the Xcode 27 beta.
+- macOS 27 beta 6 deprecates both `FileDocument` and `ReferenceFileDocument` in favor of a combined `Document` protocol; the skill had quoted the superseded beta-4 note saying `ReferenceFileDocument` remained available.
+- Foundation Models `GenerationError` is deprecated in macOS 27 with a hard submission deadline, and `exceededContextWindowSize` is renamed `contextSizeExceeded`.
+
+### Added
+
+- AppKit Liquid Glass interop: `NSGlassEffectView`, `NSGlassEffectContainerView`, `NSBackgroundExtensionView`, and `NSView.prefersCompactControlSizeMetrics` as the escape hatch when Liquid Glass inflates a dense AppKit layout.
+- SwiftUI/AppKit bridging: `NSHostingSceneRepresentation` for hosting whole scenes, `NSHostingSizingOptions`, `NSHostingSceneBridgingOptions`, and `NSGestureRecognizerRepresentable`.
+- Pasteboard privacy (macOS 15.4): `NSPasteboard.accessBehavior` and the `detect` methods that inspect the pasteboard without triggering the new read alert - the existing clipboard recipe was exactly the triggering pattern.
+- App Intents beyond the single snippet: `AppEntity`/`EntityQuery`/`AppEnum`, `IndexedEntity` with `@ComputedProperty(indexingKey:)`, `SnippetIntent` and its `isDiscoverable` trap, `supportedModes` replacing the deprecated `ForegroundContinuableIntent`, and the macOS-only `NSTableViewAppIntentsDataSource`.
+- WidgetKit on macOS and Control Center controls (`ControlWidget`, `ControlWidgetButton`, `ControlWidgetToggle`, `ControlConfigurationIntent`), which reached macOS in 26.0.
+- Logging and diagnostics: `os.Logger`, the `.private`-by-default interpolation trap, log-level persistence, reading logs from a menu-bar-only app, and `OSSignposter`.
+- `XPCSession`/`XPCListener` - the missing half of the existing `SMAppService` login-item coverage.
+- `AXUIElement` accessibility API with its TCC, signature, and sandbox constraints.
+- `NSLocalNetworkUsageDescription`, whose absence presents as a networking bug rather than a permission failure.
+- `SpeechAnalyzer`/`SpeechTranscriber` as the on-device transcription stage of the existing capture pipeline.
+- ScreenCaptureKit gaps: `streamDidBecomeActive`/`streamDidBecomeInactive` (macOS 15.2), `SCStreamConfiguration.Preset`, `SCScreenshotOutput`, and the macOS 27 beta `SCStream.isCapturing`, `SCClipBufferingOutput`, `SCRecordingEditor`.
+- xcodebuild-on-.xcodeproj field notes: builds that report `BUILD SUCCEEDED` while emitting an ad-hoc-signed bundle, `codesign -dv` as the post-build gate, `CODE_SIGNING_REQUIRED=YES`, bracketed build settings being unpassable on the command line, certificate-class prefix matching, symlinked-path build-database corruption, and TCC behavior across signature changes and bundle moves.
+- SPM consumer-side gates: `-skipPackagePluginValidation`/`-skipMacroValidation` for non-interactive builds, and `-downloadComponent MetalToolchain` after Xcode 26 unbundled the Metal toolchain.
+- SE-0506 Advanced Observation Tracking (`withObservationTracking(options:)`, `withContinuousObservationTracking`), Implemented in Swift 6.4.
+- Swift Testing pipeline: ST-0026 task-local test trait (accepted with revisions), ST-0027 and ST-0028 in active review, and the event-stream `ABI.Context` API.
+- macOS 27 beta surface: SwiftData `ResultsObserver`/`HistoryObserver`/`@Query(sectionBy:)`/`Schema.Attribute.Option.codable`, Foundation Models `PrivateCloudComputeLanguageModel` with its entitlement, the `#Playground` macro, and Core AI's public API names.
+
+Verified against: swift@6.3.3, xcode@26.6, macos@26.6.2
+
 ## [0.7.1] - 2026-08-07
 
 ### Changed

@@ -6,12 +6,17 @@
 - File System Access
 - UserDefaults & AppStorage
 - App Intents
+- Widgets & Control Center
 - Notifications
 - Process Observation
+- Accessibility API (AXUIElement)
 - CoreAudio Per-Process APIs
 - Login Items (SMAppService)
+- XPC (XPCSession / XPCListener)
 - LSUIElement & Background Apps
 - Idle Sleep Prevention
+- Logging & Diagnostics
+- Privacy usage descriptions
 
 ## Keyboard Shortcuts
 
@@ -200,6 +205,48 @@ struct MyAppShortcuts: AppShortcutsProvider {
 }
 ```
 
+### Beyond primitives: entities
+
+An `AppIntent` whose parameters are only `String`/`Int` can never reference your app's actual data. `AppEntity` is the type system that fixes that - "an interface for making a custom type or app-specific concept discoverable by Apple Intelligence and experiences like Siri or the Shortcuts app" (macOS 13+). The three pieces:
+
+| Type | Role |
+|---|---|
+| `AppEntity` | A model object addressable from Shortcuts/Siri - has an `id`, a `displayRepresentation`, and a query |
+| `EntityQuery` | How the system finds entities: by id, by string match, or by suggestion |
+| `AppEnum` | A fixed set of choices surfaced as a picker (what `ProjectTemplate` above should be) |
+
+### Spotlight indexing
+
+Conform an entity to `IndexedEntity` to put your app's records in Spotlight:
+
+> Make app entities available in Spotlight that conform to `IndexedEntity` and use the `@ComputedProperty(indexingKey:)` or `@Property(indexingKey:)` Swift macros for attributes you want to add to the Spotlight index.
+
+### Interactive snippets (macOS 26)
+
+`SnippetIntent` renders an interactive SwiftUI snippet as the intent's result rather than a plain value. One trap Apple calls out explicitly:
+
+> If an app intent conforms to `SnippetIntent` and only returns a snippet ... it's nondiscoverable by the Shortcuts app and in Spotlight. To make such an intent discoverable, explicitly set `isDiscoverable` to `true`.
+
+### Foreground continuation: use `supportedModes`
+
+`ForegroundContinuableIntent` is **deprecated at macOS 26.0**. Apple's replacement note: "Please include `.foreground(.dynamic)` in the `supportedModes` of your app intent instead." Declare `supportedModes` (`IntentModes`) on the intent rather than conforming to the old protocol.
+
+### macOS-only onscreen-content bridges
+
+The `UI*` data sources in Apple's App Intents documentation are iOS-only. The Mac equivalents are `NSTableViewAppIntentsDataSource` and `NSCollectionViewAppIntentsDataSource` (macOS 15.4+) - "the methods that an object adopts to make items in a table view or outline view discoverable by Apple Intelligence and Siri." Adopt them so Siri can act on the row a user is looking at.
+
+## Widgets & Control Center
+
+WidgetKit is macOS 11+ and covers desktop and Notification Center widgets. Two macOS-specific points the MenuBarExtra crowd usually wants:
+
+**Control Center controls reached macOS in 26.0.** Previously watchOS/iOS only:
+
+> Create controls that use `ControlWidgetButton` to execute an action and `ControlWidgetToggle` to toggle some state in your app in watchOS **and macOS**.
+
+The building blocks are `ControlWidget` (a SwiftUI widget kind), `ControlWidgetButton`, `ControlWidgetToggle`, and `ControlConfigurationIntent` for a configurable control. A control is often a better fit than a `MenuBarExtra` for a single toggle - it costs no menu-bar real estate and the system handles placement.
+
+**Liquid Glass rendering.** Use `WidgetAccentedRenderingMode` to control how widget images are treated under the macOS 26 rendering modes; `WidgetPushHandler` drives push-based timeline reloads.
+
 ## Notifications (System)
 
 ### User Notifications
@@ -383,6 +430,19 @@ class ProcessMonitor {
 }
 ```
 
+## Accessibility API (AXUIElement)
+
+`NSWorkspace` and KVO tell you *which* apps are running. `AXUIElement` - "a structure used to refer to an accessibility object" - is how a Mac utility reads and drives *another app's* UI: window titles, focused element, text selection, button presses. It is the foundation of window managers, launchers, text-expansion tools, and automation utilities.
+
+Practical constraints that decide whether a feature is even viable:
+
+- Requires the **Accessibility** TCC permission (System Settings > Privacy & Security > Accessibility), granted per app by the user. Check with `AXIsProcessTrusted()`; prompt with `AXIsProcessTrustedWithOptions` passing `kAXTrustedCheckOptionPrompt`.
+- Like screen recording, the grant keys off the app's code signature, so re-signing forces a re-grant (see the TCC notes in `distribution.md`).
+- It is a C API (`ApplicationServices`) with `AXUIElementCopyAttributeValue` returning `CFTypeRef` - the same Create-Rule bridging care as the CoreAudio CFString trap in `core-audio-tap.md` applies.
+- **Not available under the App Sandbox.** An accessibility-driven feature is Developer ID-only.
+
+Docs: <https://developer.apple.com/documentation/applicationservices/axuielement>
+
 ## CoreAudio Per-Process APIs
 
 macOS 14.2+ provides per-process audio state APIs for detecting which apps are using audio I/O. Useful for call detection, audio monitoring, or building audio routing tools.
@@ -564,6 +624,29 @@ Agent plist uses `BundleProgram` (path relative to app bundle):
 </dict>
 ```
 
+## XPC (XPCSession / XPCListener)
+
+`SMAppService` registers a LaunchAgent or LaunchDaemon; it does not give you a way to **talk** to it. That is XPC. Since macOS 14 there is a Swift-native API - `XPCSession` ("a type that sends messages to a server process") on the app side, `XPCListener` ("a type that performs tasks for clients across process boundaries") in the helper - so a privileged helper no longer requires the Objective-C `NSXPCConnection` dance.
+
+```swift
+import XPC
+
+// Client: talk to the registered helper
+let session = try XPCSession(machService: "com.example.MyHelper")
+let reply = try session.sendSync(MyRequest(command: .status))
+
+// Helper: serve
+let listener = try XPCListener(service: "com.example.MyHelper") { request in
+    request.accept { (message: MyRequest) -> MyResponse in
+        handle(message)
+    }
+}
+```
+
+Messages are `Codable`. The Mach service name must match the `MachServices` key in the helper's launchd plist, and the two binaries must share a team identifier for the connection to be accepted - verify the peer's code signing requirement rather than trusting the connection.
+
+Docs: <https://developer.apple.com/documentation/xpc/xpcsession>
+
 ## LSUIElement & Background Apps
 
 ### LSUIElement (menu-bar-only apps)
@@ -671,3 +754,40 @@ Two caveats before designing around this:
 
 - **App Sandbox**: these low-level per-process APIs are not reliably available under sandboxing, which makes a mic-activity auto-trigger a Mac App Store blocker. Plan the feature as Developer ID-only, or provide a manual path.
 - Poll on a timer or install a property listener on the process list; there is no single "someone started using the mic" notification.
+
+## Logging & Diagnostics
+
+`print` does not survive shipping. The unified logging system is the standard instrument for a Mac app: `os.Logger` is "an object for writing interpolated string messages to the unified logging system" (macOS 11+), and it is what `log stream` / `log show` and Console.app read.
+
+```swift
+import os
+
+private let log = Logger(subsystem: "com.example.MyApp", category: "capture")
+
+log.debug("frame \(index, privacy: .public) queued")
+log.error("stream stopped: \(error.localizedDescription, privacy: .public)")
+```
+
+Points that matter in practice:
+
+- **Interpolated values default to `.private`** and render as `<private>` when read back from another process. Mark non-sensitive diagnostic values `.public` explicitly or your shipped logs are useless. Do the opposite for anything user-derived.
+- **Levels have different persistence.** `.debug` is memory-only and discarded aggressively; `.info` persists only when collected; `.notice` (the default), `.error`, and `.fault` go to the on-disk store. Ship at `.notice` and above for anything you want to see in a user's sysdiagnose.
+- **Read logs for a menu-bar-only app** - which has no console output anywhere - with `log stream --predicate 'subsystem == "com.example.MyApp"' --level debug`.
+
+For performance work, `OSSignposter` brackets intervals that show up as regions in Instruments:
+
+```swift
+let signposter = OSSignposter(subsystem: "com.example.MyApp", category: "render")
+let state = signposter.beginInterval("compose")
+defer { signposter.endInterval("compose", state) }
+```
+
+Docs: <https://developer.apple.com/documentation/os/logger>
+
+## Privacy usage descriptions
+
+The capture-heavy parts of this skill cover screen recording and microphone TCC in depth. One easily missed sibling:
+
+- **`NSLocalNetworkUsageDescription`** - "a message that tells people why the app is requesting access to the local network" (macOS 11+). Required for **any** Bonjour/mDNS discovery or local-subnet traffic. Without it the app is denied local network access, and the failure looks like a networking bug: discovery returns nothing, connections to `.local` names time out. Apps that stream to a local device, discover a companion app, or run a local server for a helper all need it, alongside `NSBonjourServices` listing the service types you browse.
+
+Docs: <https://developer.apple.com/documentation/bundleresources/information-property-list/nslocalnetworkusagedescription>

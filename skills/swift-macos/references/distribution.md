@@ -52,15 +52,41 @@ spctl --assess --type execute MyApp.app
 
 If a running signed app is killed at idle right after a rebuild (e.g. a `make run` loop that replaces the `.app` under the running process), the crash is `SIGKILL` with `EXC_CRASH (Code Signature Invalid)` - not a bug in your code. macOS validates memory-mapped code pages against the on-disk signature lazily; overwriting the bundle invalidates the pages the kernel later faults in, so it terminates the process. Quit the old instance before replacing the bundle, or launch from a copied path.
 
+## Building an existing `.xcodeproj` from the command line
+
+Signing an `.xcodeproj` via `xcodebuild` fails in ways that still report `BUILD SUCCEEDED`. These are the traps that cost the most time.
+
+**`BUILD SUCCEEDED` does not mean "signed as you asked."** When the pbxproj declares an SDK-conditional identity - `CODE_SIGN_IDENTITY[sdk=macosx*] = "Apple Development"` - a command-line override can be *accepted, logged, and then ignored*. The log prints `note: Using codesigning identity override: <hash>` and the build still emits an ad-hoc-signed bundle. An `.xcconfig` setting `CODE_SIGN_IDENTITY = -` outranks both the pbxproj conditional and the command line. Two defences:
+
+```bash
+# 1. Refuse to silently fall back to ad-hoc
+xcodebuild -scheme MyApp CODE_SIGNING_REQUIRED=YES ...
+
+# 2. Never trust the build log - verify the artifact
+codesign -dv --verbose=4 build/MyApp.app 2>&1 | grep -E 'Authority|Signature|flags'
+```
+
+`Signature=adhoc` in that output means unsigned for every practical purpose: no Developer ID, no notarization, no stable TCC identity.
+
+**Bracketed build settings cannot be passed on the command line at all.** `xcodebuild` splits each `SETTING=VALUE` argument on the *first* `=`, so `CODE_SIGN_IDENTITY[sdk=macosx*]=X` parses as the setting name `CODE_SIGN_IDENTITY[sdk` with the value `macosx*]=X`. To change a conditional identity, edit the pbxproj or supply an `.xcconfig` - there is no CLI form.
+
+**Match the identity by name, not by prefix.** Scripts that auto-detect a certificate with `security find-identity | grep "Apple Development: "` can never match a `Developer ID Application` certificate - different certificate class, and no environment variable or rename fixes it. Match on the exact keychain name you intend to use, or build ad-hoc and re-sign the bundle inside-out (frameworks -> dylibs -> XPC services -> app).
+
+**Build from the resolved real path.** Building through a symlinked source directory corrupts Xcode's build database: you get `Stale file ... outside of the allowed root paths` and a module-emit failure, often with **no `error:` line anywhere in the log**. Delete the derived-data directory and rebuild from the fully resolved path (`cd "$(realpath .)"`).
+
+**Signature-class changes cost one round of TCC re-prompts.** Switching a bundle between ad-hoc and Developer ID changes its code identity, so the system asks for screen-recording and microphone consent once more. That is expected. Also expected: `spctl -a -vv` reporting `rejected / Unnotarized Developer ID` for a locally signed build - Gatekeeper acts on the quarantine attribute, which `xattr -cr MyApp.app` clears.
+
+**Moving a signed `.app` preserves its TCC grants and preferences.** TCC keys off bundle identifier plus signature, not path, so relocating a bundle does not reset permissions. The safe replace idiom is quit the app, `ditto` the new bundle into place, then `xattr -cr` it.
+
 ## App Store Distribution
 
 ### Requirements
 - Active Apple Developer Program membership ($99/year)
 - App Store Connect listing with metadata, screenshots
-- **Starting April 28, 2026**: uploads to App Store Connect must be built with **Xcode 26 and the iOS 26 / iPadOS 26 / tvOS 26 / visionOS 26 / watchOS 26 SDK**. Pure macOS apps are **not** in Apple's list as of 2026-04-24; Mac Catalyst and Designed-for-iPad builds inherit the iOS 26 SDK requirement. Source: https://developer.apple.com/news/?id=ueeok6yw and https://developer.apple.com/news/upcoming-requirements
+- **Since April 28, 2026**: uploads to App Store Connect must be built with **Xcode 26 and the iOS 26 / iPadOS 26 / tvOS 26 / visionOS 26 / watchOS 26 SDK**. Pure macOS apps are **not** in Apple's list as of 2026-04-24; Mac Catalyst and Designed-for-iPad builds inherit the iOS 26 SDK requirement. Source: https://developer.apple.com/news/?id=ueeok6yw and https://developer.apple.com/news/upcoming-requirements
 - Sandbox entitlement required
 - App Review compliance
-- Audit `PrivacyInfo.xcprivacy` against the current required-reason APIs list (https://developer.apple.com/documentation/bundleresources/privacy_manifest_files/describing_use_of_required_reason_api) — Apple updates it periodically
+- Audit `PrivacyInfo.xcprivacy` against the current required-reason APIs list (https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api) — Apple updates it periodically
 
 ### Workflow
 1. Archive: Product > Archive in Xcode

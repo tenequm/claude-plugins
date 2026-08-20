@@ -308,7 +308,7 @@ class RichDocument: ReferenceFileDocument {
 
 ## Window Management
 
-### Restore behavior (macOS 26)
+### Restore behavior (macOS 15+)
 ```swift
 WindowGroup {
     ContentView()
@@ -321,10 +321,15 @@ WindowGroup {
 .windowLevel(.floating) // Keep window above others
 ```
 
-### Full-screen support
+### Presented window style
+
+`presentedWindowStyle` is a `View` modifier that styles windows this view presents. The complete set of `WindowStyle` values in the macOS 26.5 SDK is `.automatic`, `.titleBar`, `.hiddenTitleBar`, and `.plain` - there is no `.fullScreen` member.
+
 ```swift
-.presentedWindowStyle(.automatic) // .fullScreen
+.presentedWindowStyle(.hiddenTitleBar) // .automatic, .titleBar, .plain
 ```
+
+Full-screen is not a `WindowStyle`. Drive it from AppKit (`NSWindow.toggleFullScreen(_:)`) or let the user use the standard green-button behavior.
 
 ## Scene Phases
 

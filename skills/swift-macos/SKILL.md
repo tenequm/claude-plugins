@@ -2,8 +2,8 @@
 name: swift-macos
 description: Covers macOS app development with Swift 6.3, SwiftUI, SwiftData, Swift Concurrency, Foundation Models, Swift Testing, ScreenCaptureKit, and app distribution. Use when building native Mac apps - windows, scenes, navigation, menus and toolbars, SwiftData models and queries, modern concurrency, on-device AI, testing, screen and audio capture, MenuBarExtra apps, AppKit bridges, login items, process monitoring, or App Store and Developer ID notarization.
 metadata:
-  version: "0.7.1"
-  upstream: "swift@6.3.3, xcode@26.6, macos@26.6"
+  version: "0.8.0"
+  upstream: "swift@6.3.3, xcode@26.6, macos@26.6.2"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/swift-macos
     emoji: "🍎"
@@ -13,7 +13,7 @@ metadata:
 
 # macOS App Development - Swift 6.3
 
-Build native macOS apps with Swift 6.3 (latest: 6.3.3, bundled in Xcode 26.6, Jun 2026), SwiftUI, SwiftData, and macOS 26 Tahoe (26.6 current). Target macOS 14+ for SwiftData/@Observable, macOS 15+ for latest SwiftUI, macOS 26 for Liquid Glass and Foundation Models. Note Xcode 26.6 still bundles the macOS **26.5** SDK, so 26.6-only API is not yet buildable. For the WWDC 2026 beta stack (macOS 27, Xcode 27, Swift 6.4, shipping fall 2026), see `references/fall-2026-releases.md`.
+Build native macOS apps with Swift 6.3 (latest: 6.3.3, bundled in Xcode 26.6, Jun 2026), SwiftUI, SwiftData, and macOS 26 Tahoe (26.6.2 current). Target macOS 14+ for SwiftData/@Observable, macOS 15+ for latest SwiftUI, macOS 26 for Liquid Glass and Foundation Models. Note Xcode 26.6 still bundles the macOS **26.5** SDK, so 26.6-only API is not yet buildable. For the WWDC 2026 beta stack (macOS 27, Xcode 27, Swift 6.4, shipping fall 2026), see `references/fall-2026-releases.md`.
 
 ## Quick Start
 
@@ -184,16 +184,22 @@ let count = try context.fetchCount(desc)
     var name: String
     @Relationship(deleteRule: .cascade, inverse: \Book.author)
     var books: [Book] = []
+
+    init(name: String) { self.name = name }
 }
 
 @Model final class Book {
     var title: String
     var author: Author?
     @Relationship var tags: [Tag] = []  // many-to-many
+
+    init(title: String) { self.title = title }
 }
 ```
 
 Delete rules: `.cascade`, `.nullify` (default), `.deny`, `.noAction`.
+
+Every `@Model` class needs an explicit initializer - the macro does not synthesize one, and omitting it fails with `@Model requires an initializer be provided for '<Type>'`.
 
 ### Schema Migration
 
@@ -473,15 +479,15 @@ See `references/architecture.md` for all patterns with examples.
 | **SwiftUI & macOS** | |
 | `references/app-lifecycle.md` | Window management, scenes, DocumentGroup, MenuBarExtra gotchas, async termination, LSUIElement issues |
 | `references/swiftui-macos.md` | Sidebar, Inspector, Table, forms, popovers, sheets, search |
-| `references/appkit-interop.md` | NSViewRepresentable, hosting controllers, AppKit bridging, NSPanel/floating HUD |
-| `references/screen-capture-audio.md` | ScreenCaptureKit, SCStream gotchas, SCStream teardown hazards, AVAudioEngine dual pipeline, AVAssetWriter crash safety, non-interleaved stereo trap, TCC gotchas, CDHash degraded-state after reinstall |
+| `references/appkit-interop.md` | NSViewRepresentable, hosting controllers, NSHostingSceneRepresentation, sizing/scene-bridging options, AppKit Liquid Glass (NSGlassEffectView), pasteboard privacy, NSPanel/floating HUD |
+| `references/screen-capture-audio.md` | ScreenCaptureKit, SCStream gotchas, SCStream teardown hazards, AVAudioEngine dual pipeline, AVAssetWriter crash safety, non-interleaved stereo trap, TCC gotchas, CDHash degraded-state after reinstall, SpeechAnalyzer transcription |
 | `references/core-audio-tap.md` | CATap for per-process audio: tap-only aggregate (HFP-safe), drift compensation, rate-change anti-pattern, interleaved-stereo frame-count trap, IO proc isolation |
-| `references/system-integration.md` | Keyboard shortcuts, drag & drop, file access, App Intents, process monitoring, CoreAudio per-process APIs, login items, LSUIElement, idle sleep prevention |
+| `references/system-integration.md` | Keyboard shortcuts, drag & drop, file access, App Intents (entities, Spotlight, snippets), widgets & Control Center, process monitoring, AXUIElement, CoreAudio per-process APIs, login items, XPC, LSUIElement, os.Logger & signposts, privacy usage descriptions |
 | `references/foundation-models.md` | On-device AI: guided generation, tool calling, streaming |
 | `references/architecture.md` | MVVM, TCA, dependency injection, project structure |
 | `references/testing.md` | Swift Testing, exit tests, attachments, UI testing, XCTest migration |
-| `references/distribution.md` | App Store, Developer ID, notarization gotchas, nested bundle signing, sandboxing, universal binaries |
-| `references/spm-build.md` | Package.swift, Swift Build, plugins, macros, manual .app bundle assembly, mixed ObjC targets, CLT testing |
+| `references/distribution.md` | App Store, Developer ID, notarization gotchas, nested bundle signing, xcodebuild signing traps (silent ad-hoc builds), sandboxing, universal binaries |
+| `references/spm-build.md` | Package.swift, Swift Build, plugins, macros, plugin/macro validation gates, Metal toolchain download, manual .app bundle assembly, mixed ObjC targets, CLT testing |
 | **Concurrency** | |
 | `references/approachable-concurrency.md` | Default MainActor isolation, @concurrent, nonisolated async, runtime pitfalls |
 | `references/actors-isolation.md` | Actor model, global actors, custom executors, reentrancy |

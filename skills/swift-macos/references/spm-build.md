@@ -256,6 +256,24 @@ swift build \
 
 Redirect the caches to a writable scratch directory and re-run before concluding anything about the package itself.
 
+## Consuming packages from `xcodebuild`: two gates that block non-interactive builds
+
+**Plugin and macro validation.** A project whose dependencies carry package plugins or macros stops on a trust prompt that has no answer in a headless build - it surfaces as a stall or failure on `Validate plug-in '<name>' in package '<pkg>'`. Both gates have opt-outs, and both exist for a reason: they are the trust boundary for arbitrary code running at build time, so only skip them for dependencies you have vetted.
+
+```bash
+xcodebuild -scheme MyApp \
+  -skipPackagePluginValidation \
+  -skipMacroValidation
+```
+
+**The Metal toolchain is no longer bundled.** Xcode 26 unbundled it, so any target compiling `.metal` shaders - directly, or through a dependency that does - fails with `cannot execute tool 'metal'` on a fresh install. It is a one-time ~688 MB download:
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
+
+`xcodebuild -help` lists `MetalToolchain` as the only supported component value.
+
 ## Macros
 
 ### Using macros

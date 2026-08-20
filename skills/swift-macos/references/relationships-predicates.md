@@ -108,8 +108,11 @@ final class Profile {
 ```swift
 @Model
 final class Project {
+    var name: String
     @Relationship(deleteRule: .cascade)
     var tasks: [ProjectTask] = []
+
+    init(name: String) { self.name = name }
 }
 
 // Deleting project automatically deletes all its tasks

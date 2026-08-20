@@ -286,7 +286,7 @@ SCStream sample buffers are framework-managed and potentially shared. Writing in
 
 ### SCStream error codes and recovery
 
-Full mapping from `SCError.h` in the macOS 26 SDK. Source (local path on any machine with Xcode 26 installed): `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/ScreenCaptureKit.framework/Versions/A/Headers/SCError.h`. API docs: https://developer.apple.com/documentation/screencapturekit/scstreamerrorcode
+Full mapping from `SCError.h` in the macOS 26 SDK. Source (local path on any machine with Xcode 26 installed): `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/ScreenCaptureKit.framework/Versions/A/Headers/SCError.h`. API docs: https://developer.apple.com/documentation/screencapturekit/scstreamerror/code
 
 | Code | Enum case | Since | Meaning |
 |------|-----------|-------|---------|
@@ -1412,3 +1412,27 @@ private func verifyMicAlive(after rebuild: Date) async {
 ```
 
 Recreate the engine rather than reusing the existing graph - reattaching a tap to the stale engine reproduces the same dead state.
+
+## Remaining API surface not covered above
+
+Small but real gaps, grouped by availability.
+
+**macOS 15.2+ - stream activity callbacks.** `SCStreamDelegate` gained `streamDidBecomeActive(_:)` and `streamDidBecomeInactive(_:)`. The system can idle a stream (for example when its content is fully occluded) without stopping it, so a UI that infers "recording" from `startCapture()` alone drifts out of sync with reality. Drive your recording indicator from these callbacks rather than from your own start/stop flags.
+
+**`SCStreamConfiguration.Preset`.** Apple ships presets that set a coherent group of properties (resolution, pixel format, color space) for common capture intents. Prefer a preset as the starting point and override individual properties afterwards, rather than hand-setting a dozen fields and discovering later that the color space did not match the pixel format.
+
+**`SCScreenshotOutput`** complements `SCScreenshotManager`: it delivers screenshot results through the stream-output pipeline instead of a one-shot call, which is what you want when the screenshot has to be consistent with the frames around it.
+
+**macOS 27 beta additions.** `SCStream.isCapturing` finally exposes the stream's own state as a property rather than something you track alongside it. `SCClipBufferingOutput` buffers a rolling window so an app can retroactively save "the last N seconds" - the retroactive-clip pattern that previously required a hand-rolled ring buffer over `SCStreamOutput`. `SCRecordingEditor` edits a recording produced by `SCRecordingOutput` without dropping to AVFoundation.
+
+Note that `/documentation/updates/screencapturekit` is stale at June 2024 and lists none of the above - the framework symbol index and the release notes are the only usable change log for ScreenCaptureKit.
+
+## Transcription: SpeechAnalyzer (macOS 26+)
+
+The capture pipeline in this file ends at a file or buffer. `SpeechAnalyzer` - "analyzes spoken audio content in various ways and manages the analysis session" - is the on-device consumer for it, with `SpeechTranscriber` as "a speech-to-text transcription module that's appropriate for normal conversation and general purposes."
+
+It pairs directly with the two audio paths documented above: feed it the `AVAudioPCMBuffer`s you already convert from `CMSampleBuffer` for system audio, or the buffers from the `AVAudioEngine` mic tap. Because both run on device, a capture-plus-transcribe feature needs no network access and no additional privacy disclosure beyond the microphone and screen-recording TCC grants already covered in the Permissions section.
+
+Note the layering: `SpeechAnalyzer` handles transcription (audio to text). Summarizing or extracting structure from that text is a separate step - see `foundation-models.md` for the on-device model, which is the natural next stage of the same pipeline.
+
+Docs: <https://developer.apple.com/documentation/speech/speechanalyzer>

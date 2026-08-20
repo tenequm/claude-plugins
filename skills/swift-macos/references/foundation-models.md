@@ -308,6 +308,14 @@ Every case carries a `GenerationError.Context` with a `debugDescription`. The `.
 
 Tool errors surface as a separate `LanguageModelSession.ToolCallError` that wraps your tool and the underlying error (lines 447-454).
 
+### `GenerationError` is deprecated in macOS 27 - with a submission deadline
+
+Apple deprecates `LanguageModelSession.GenerationError` in the macOS 27 SDK in favour of `LanguageModelError`, `SystemLanguageModel.Error`, and `LanguageModelSession.Error`, and renames `exceededContextWindowSize` to `contextSizeExceeded`. The deprecation note is unusually strict:
+
+> Use `LanguageModelError`, `SystemLanguageModel.Error`, or `LanguageModelSession.Error` instead. Apps built with Xcode 26 will continue to catch this error until you rebuild with Xcode 27. **You must update to Xcode 27 to catch the new error types before submitting your app.**
+
+The `catch` ladder above is correct for the Xcode 26 / macOS 26.5 SDK this skill targets, but plan the rename before moving to Xcode 27 - a stale `catch LanguageModelSession.GenerationError.exceededContextWindowSize` silently stops matching once rebuilt. Source: <https://developer.apple.com/documentation/foundationmodels/languagemodelsession/generationerror>
+
 ## Built-in Use Cases
 
 `SystemLanguageModel.UseCase` is a struct (not an enum). Only two values ship on macOS 26 (swiftinterface lines 524-528):
@@ -373,7 +381,7 @@ let session = LanguageModelSession(model: model)
 
 `Adapter(name:)`, `removeObsoleteAdapters()`, `compile()`, `compatibleAdapterIdentifiers(name:)`, and `isCompatible(_:)` are all on `SystemLanguageModel.Adapter` (swiftinterface lines 664-673). The asset-downloader extension's `shouldDownload(_:)` should delegate adapter-compatibility checks to `SystemLanguageModel.Adapter.isCompatible(assetPack)`.
 
-See: <https://developer.apple.com/documentation/foundationmodels/loading-and-using-a-custom-adapter-with-foundation-models> and <https://developer.apple.com/apple-intelligence/foundation-models-adapter> for the Python toolkit.
+See <https://developer.apple.com/apple-intelligence/foundation-models-adapter> for the Python toolkit. (Apple removed the "Loading and using a custom adapter" article - that URL now redirects to the framework root. The `SystemLanguageModel.Adapter` symbols above are still present in the SDK and still compile.)
 
 ## Language Support & Limits
 
@@ -404,7 +412,6 @@ Primary references:
 - <https://developer.apple.com/documentation/foundationmodels>
 - <https://developer.apple.com/documentation/foundationmodels/generating-content-and-performing-tasks-with-foundation-models>
 - <https://developer.apple.com/documentation/technotes/tn3193-managing-the-on-device-foundation-model-s-context-window>
-- <https://developer.apple.com/documentation/foundationmodels/loading-and-using-a-custom-adapter-with-foundation-models>
 
 ## `@PromptBuilder` - composing prompts structurally
 
@@ -457,15 +464,22 @@ let value = try content.value(String.self, forProperty: "title")
 
 The result is `GeneratedContent` rather than a typed struct - read properties by name with `value(_:forProperty:)`. Prefer `@Generable` whenever the shape is static; this path trades compile-time safety for flexibility.
 
-## `ContextOptions` - managing the context window
+## Managing the context window
 
-Long multi-turn sessions eventually exceed the model's context. `ContextOptions` controls what happens at the boundary rather than letting the session fail:
+The context window is 4096 tokens and there is **no** API in the macOS 26 SDK that trims or evicts transcript entries for you. The recovery path is manual: catch the context error and start a fresh session seeded with a condensed summary of the old transcript (see "Sessions & Context" above).
+
+Budget proactively instead of reacting. `SystemLanguageModel.tokenCount(for:)` measures a `Prompt`, `Instructions`, `[Tool]`, `GenerationSchema`, or a collection of transcript entries before you send it, and `contextSize` reports the maximum the model supports:
 
 ```swift
-let session = LanguageModelSession(
-    model: .default,
-    contextOptions: ContextOptions(/* trimming / retention policy */)
-)
+let model = SystemLanguageModel.default
+let used = try await model.tokenCount(for: prompt)
+if used > model.contextSize / 2 { /* condense before sending */ }
 ```
 
-Pair it with the existing `exceededContextWindowSize` error handling documented above - the options reduce how often you hit the error, but a long-lived session still needs the recovery path that starts a fresh session seeded with a summary of the old transcript.
+In Xcode, the `#Playground` macro shows an estimate of how much of the 4096-token window a given call consumes, which is the fastest way to find the instruction block or tool schema that is eating the budget.
+
+> **`ContextOptions` is macOS 27 beta, not macOS 26.** It does not exist in the macOS 26.5 SDK (`error: cannot find 'ContextOptions' in scope`), and despite the name it is not a trimming or retention policy - Apple defines it as "Options that configure details that should appear in the prompt." Do not reach for it on the shipping stack. Source: <https://developer.apple.com/documentation/foundationmodels/contextoptions>
+
+## Server-backed models (macOS 27 beta)
+
+`PrivateCloudComputeLanguageModel` is a variant of the system model that runs on Private Cloud Compute for capabilities the ~3B on-device model cannot handle, while keeping Apple's privacy guarantees. Apple describes it as a one-line swap for `SystemLanguageModel`; it requires the `com.apple.developer.private-cloud-compute` entitlement. macOS 27 beta only. Source: <https://developer.apple.com/documentation/foundationmodels/privatecloudcomputelanguagemodel>

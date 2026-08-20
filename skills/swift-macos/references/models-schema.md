@@ -306,16 +306,38 @@ Index the properties you actually filter and sort on. Compound index column orde
 
 ## Model inheritance
 
-`@Model` classes can subclass other `@Model` classes. Fetches on the parent type return subclass instances by default:
+`@Model` classes can subclass other `@Model` classes (**macOS 26.0+**). Fetches on the parent type return subclass instances by default:
 
 ```swift
-@Model class Media { var title: String; init(title: String) { self.title = title } }
-@Model final class Movie: Media { var runtime: Int = 0 }
-@Model final class Podcast: Media { var episodeCount: Int = 0 }
+@available(macOS 26, *)
+@Model class Media {
+    var title: String
+    init(title: String) { self.title = title }
+}
+
+@available(macOS 26, *)
+@Model final class Movie: Media {
+    var runtime: Int = 0
+    init(title: String, runtime: Int) {
+        self.runtime = runtime
+        super.init(title: title)
+    }
+}
+
+@available(macOS 26, *)
+@Model final class Podcast: Media {
+    var episodeCount: Int = 0
+    init(title: String, episodeCount: Int) {
+        self.episodeCount = episodeCount
+        super.init(title: title)
+    }
+}
 
 // Returns Movies and Podcasts too
 let all = try context.fetch(FetchDescriptor<Media>())
 ```
+
+The `@available` annotation is not optional: a `PersistentModel` subclass without one fails to compile with `A PersistentModel Subclass is required to have platform availability specified`, and annotating it below 26.0 fails with `A PersistentModel Subclass requires macOS 26.0 or greater`. Subclasses need explicit initializers like every other `@Model`.
 
 Control this on deletes with `includeSubclasses` (defaults to `true`):
 

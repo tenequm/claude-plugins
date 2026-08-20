@@ -449,6 +449,16 @@ Proposal status is now **Implemented (Swift 6.4)**, and `SWIFT_TESTING_XCTEST_IN
 
 Practical gate is unchanged for this skill's pinned toolchain: on Swift 6.3 only the fallback-event-handler plumbing is present (PRs #1369, #1503, #1543), so don't rely on interop-mode semantics until you are on a 6.4 toolchain. Sources: [ST-0021](https://github.com/swiftlang/swift-evolution/blob/main/proposals/testing/0021-targeted-interoperability-swift-testing-and-xctest.md), [EnvironmentVariables.md](https://github.com/swiftlang/swift-testing/blob/main/Documentation/EnvironmentVariables.md)
 
+### In the pipeline (not yet in any toolchain)
+
+Nothing below is usable on 6.3.3; track them if you maintain a test suite that will move to 6.4+.
+
+- **ST-0026 task-local test trait** - **Accepted with revisions** on 2026-08-14. A trait that sets task-local values for the duration of a test, which is today's workaround-by-hand for injecting per-test configuration through `@TaskLocal`. ([proposal](https://github.com/swiftlang/swift-evolution/blob/main/proposals/testing/0026-task-local-test-trait.md))
+- **ST-0027 source-location macro** and **ST-0028 revised attachment `Encodable` interfaces** - both entered active review in August 2026; ST-0028 in particular would reshape the attachment API documented above.
+- The event stream gained an `ABI.Context` API producing human-readable output for CI tooling and dashboards (merged, unreleased).
+
+The newest tagged swift-testing release is still `swift-6.3.2-RELEASE` (2026-05-13).
+
 ## UI Testing (XCTest-based)
 
 UI testing still uses XCTest (Swift Testing doesn't support UI tests yet):
