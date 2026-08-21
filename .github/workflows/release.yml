@@ -49,10 +49,17 @@ jobs:
       - name: Ensure no uncommitted changes
         run: git diff --exit-code
 
+      # A release tag advances only on success, so a failed run's commits stay in
+      # the next run's range instead of vanishing between two push events.
+      - name: Resolve last released commit
+        id: base
+        run: |
+          echo "ref=$(git describe --tags --match 'skills-*' --abbrev=0 HEAD 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+
       - name: Prepare release artifacts
         id: prepare
         run: |
-          just release-prepare "${{ github.event.before }}" "${{ github.sha }}" "$GITHUB_OUTPUT"
+          just release-prepare "${{ steps.base.outputs.ref }}" "${{ github.sha }}" "$GITHUB_OUTPUT"
 
       - name: Stop when no skills changed
         if: steps.prepare.outputs.changed != 'true'
