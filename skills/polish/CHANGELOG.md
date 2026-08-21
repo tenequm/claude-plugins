@@ -7,6 +7,14 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-08-21
+
+### Changed
+
+- Removed the non-blocking "Observations" report section. Everything actionable the review surfaces - including pre-existing flaws the diff touches and adjacent out-of-diff issues - is now a regular finding in its category, tagged `(pre-existing)` or `(out of diff)`, with the Recommendation line judging fix vs. skip on long-term codebase benefit (out-of-diff findings default to fix).
+- Rewrote the scope rule: the diff remains the hunting scope, but real issues found along the way are findings, never parked in a side note.
+- Recommendation guidance now carries a fix-vs-defer test: defer only what forces a decision or carries more risk than value; a low-risk maintenance fix is a fix, not a deferral.
+
 ## [2.4.3] - 2026-08-21
 
 ### Changed
