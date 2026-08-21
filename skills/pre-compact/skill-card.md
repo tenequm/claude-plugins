@@ -47,6 +47,10 @@ Risk: `auto` mode applies every proposed edit without review, which can overwrit
 
 Mitigation: `auto` is opt-in per invocation; the default flow stops for approval, accepts a subset of item numbers, and the skill never commits or pushes, so every change stays reviewable in the working tree.
 
+Risk: Verbatim copying could reproduce a secret that passed through the conversation into the handoff file.
+
+Mitigation: The skill forbids writing secrets, tokens, passwords, or API keys into the handoff and requires a reference to where they live (env var name, vault item) instead.
+
 Risk: Handoff files accumulate and may contain sensitive project detail.
 
 Mitigation: Files are dated and human-readable in one directory, so they can be pruned or excluded from version control as a routine step.
@@ -67,7 +71,7 @@ Other properties: Writes files in the working directory. Does not run version-co
 
 ## Skill Version
 
-0.1.1
+0.1.2
 
 ## Ethical Considerations
 

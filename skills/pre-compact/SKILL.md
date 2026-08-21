@@ -2,7 +2,7 @@
 name: pre-compact
 description: Prepare the session for context compaction - write a handoff file a fresh session can continue from, propose updates to the project's durable docs, apply them on approval or with `auto`. Use before compacting or clearing context, or on "pre-compact".
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/pre-compact
     emoji: "🧳"
@@ -26,7 +26,9 @@ line `# Handoff <date> <time> <repo>@<branch>`. Then write these sections:
 - Undone instructions: what I asked for that is not done.
 - References: files, links, related docs.
 
-Copy numbers, commands and paths exactly. Do not paraphrase them. Record only
+Copy numbers, commands and paths exactly. Do not paraphrase them. Never write
+secrets, tokens, passwords or API keys into the handoff. Write where they
+live instead, for example the env var name or the vault item. Record only
 decisions that were made. Keep open questions open.
 
 Then check the docs this project uses to track work: plans, journals, status
