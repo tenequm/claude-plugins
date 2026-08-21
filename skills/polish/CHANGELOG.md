@@ -7,6 +7,12 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-08-21
+
+### Fixed
+
+- Eval 5 still required the report to stay off pre-existing code, the rule 2.5.0 replaced, and its "clean" fixture had an unchecked `fetch` boundary in the baseline that the changed file calls into - so correctly surfacing it would have failed the eval. Baseline now checks `res.ok`, and the expectation asks for no manufactured findings instead.
+
 ## [2.5.0] - 2026-08-21
 
 ### Changed

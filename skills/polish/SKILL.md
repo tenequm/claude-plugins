@@ -2,7 +2,7 @@
 name: polish
 description: Pre-release code review - runs lint/type checks, launches parallel review agents (cleanliness, design, efficiency, side-effect gating) on the diff, validates findings, and fixes with approval. Use before committing, pushing, or releasing changes.
 metadata:
-  version: "2.5.0"
+  version: "2.5.1"
   categories: "development"
   topics: "code-review, linting, refactoring, pre-release, diff-review"
   openclaw:

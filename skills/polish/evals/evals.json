@@ -59,12 +59,12 @@
     {
       "id": 5,
       "prompt": "Set up the fixture repo by running `bash evals/fixtures/clean/setup.sh`, then cd into the created directory and run /polish",
-      "expected_output": "Report should say 'Clean - no issues found' and stop. Should not suggest improvements to pre-existing code or nitpick style choices.",
+      "expected_output": "Report should say 'Clean - no issues found' and stop. The baseline is clean too, so there is nothing real to surface from outside the diff; should not manufacture findings or nitpick style choices.",
       "files": ["evals/fixtures/clean/setup.sh"],
       "expectations": [
         "Report states clean or no issues found",
         "Report does NOT flag any issues in the changed code",
-        "Report does NOT suggest improvements to pre-existing unchanged code",
+        "Report does NOT manufacture findings in the baseline code, which is also clean",
         "Automated checks (lint/typecheck) pass before review"
       ]
     }

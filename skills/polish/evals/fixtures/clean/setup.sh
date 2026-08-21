@@ -29,12 +29,12 @@ const DEFAULT_TIMEOUT = 5000;
 
 export function createClient(config: Config) {
   return {
-    async get<T>(path: string): Promise<ApiResponse<T>> {
+    async get<T>(path: string): Promise<ApiResponse<T | undefined>> {
       const res = await fetch(`${config.apiUrl}${path}`, {
         signal: AbortSignal.timeout(config.timeout || DEFAULT_TIMEOUT),
       });
-      const data = await res.json();
-      return { data: data as T, status: res.status };
+      const data = res.ok ? ((await res.json()) as T) : undefined;
+      return { data, status: res.status };
     },
   };
 }
