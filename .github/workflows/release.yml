@@ -35,6 +35,15 @@ jobs:
       - name: Install ClawHub CLI
         run: npm install -g clawhub
 
+      # Must precede `just check`: its ClawHub preflight needs the publisher
+      # identity to resolve slugs another publisher also owns.
+      - name: Authenticate to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          [ -n "$CLAWHUB_TOKEN" ] || (echo "CLAWHUB_TOKEN secret is required." && exit 1)
+          clawhub login --token "$CLAWHUB_TOKEN" --no-browser
+
       - name: Validate repository
         run: just check
       - name: Ensure no uncommitted changes
@@ -48,14 +57,6 @@ jobs:
       - name: Stop when no skills changed
         if: steps.prepare.outputs.changed != 'true'
         run: echo "No skill changes detected."
-
-      - name: Authenticate to ClawHub
-        if: steps.prepare.outputs.publishable == 'true'
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-        run: |
-          [ -n "$CLAWHUB_TOKEN" ] || (echo "CLAWHUB_TOKEN secret is required." && exit 1)
-          clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 
       - name: Publish changed skills to ClawHub
         if: steps.prepare.outputs.publishable == 'true'

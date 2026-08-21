@@ -639,13 +639,23 @@ def preflight_skill(skill_dir: Path, repo_root: Path) -> list[str]:
 def preflight_clawhub(repo_root: Path) -> int:
     """Resolve every publish against ClawHub before a release can run.
 
-    `--dry-run` needs no token, so this always runs rather than degrading to a
-    skip when credentials are absent.
+    A token is required rather than optional: without the publisher identity the
+    CLI cannot resolve a slug another publisher also owns, and the dry-run fails
+    as ambiguous instead of checking anything.
     """
     print("==> ClawHub publish preflight")
     if shutil.which("clawhub") is None:
         print(
             "clawhub CLI not found. Install it with `npm install -g clawhub`.",
+            file=sys.stderr,
+        )
+        return 1
+
+    whoami = subprocess.run(["clawhub", "whoami"], cwd=repo_root, text=True, capture_output=True)
+    if whoami.returncode != 0:
+        print(
+            "clawhub is not authenticated. Run `clawhub login`, or set the "
+            "CLAWHUB_TOKEN secret in CI.",
             file=sys.stderr,
         )
         return 1

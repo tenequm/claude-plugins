@@ -18,10 +18,17 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-      # `just check` resolves every publish against ClawHub with `--dry-run`,
-      # which needs the CLI but no token.
+      # `just check` resolves every publish against ClawHub with `--dry-run`.
+      # The token is required: without it the CLI cannot resolve the publisher,
+      # so a slug another publisher also owns fails as ambiguous.
       - name: Install ClawHub CLI
         run: npm install -g clawhub
+      - name: Authenticate to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          [ -n "$CLAWHUB_TOKEN" ] || (echo "CLAWHUB_TOKEN secret is required." && exit 1)
+          clawhub login --token "$CLAWHUB_TOKEN" --no-browser
       - run: just check
       - name: Ensure no uncommitted changes
         run: git diff --exit-code
