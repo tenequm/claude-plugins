@@ -2,7 +2,7 @@
 name: lance-format
 description: Deep reference for Lance v11 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace plus pylance. Covers the 2.x file format and structural encodings, the table format (manifests, fragments, transactions, OCC), vector / scalar / full-text indexes, MemWAL, schema evolution, time travel, namespaces, and object-store config. Use when building directly on the Lance crates or reading `.lance` datasets; this is the Lance format and engine (`lance-format/lance`), not the LanceDB product built on top of it.
 metadata:
-  version: "0.16.0"
+  version: "0.17.0"
   upstream: "lance-format/lance@v11.0.0-beta.16"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/lance-format
@@ -150,137 +150,57 @@ invariants held: **26 crates**, **16 transaction ops**, `CommitConfig.num_retrie
 file-format enum still `next => 2.3` / default 2.1 (no 2.4), arrow 58 / datafusion 54, MSRV
 1.91.0, Edition 2024, Python 3.10+.
 
-**Two `LANCE_*` env vars did land** (both from the AMX work, #8540): `LANCE_DISABLE_AMX`, a
-runtime kill switch, and `LANCE_AMX_FP16_CC`, a build-time compiler override. Note that
-`LANCE_AMX_CFG_*` and `LANCE_AMX_TILE_COUNT` are **C macros in `amx_fp16.c`, not env vars** -
-a plain `LANCE_*` grep over the tree reports them as if they were. Performance section below.
+**`references/changelog-v7-v11.md` has the full delta** - every PR citation, the per-tag
+breakdown from v7 forward, the complete Python/Java surface, and each correctness fix with the
+condition that triggers it. Load it for any "what changed / will this break me" question. What
+follows is only what bites hardest.
 
-**The manifest feature flags did change** - the first new bit since v7.
+**Five things that break you at v11:**
+
+- **Fragment ids are a dataset-lifetime high-water mark** (#8206) - a *format* invariant, not
+  just an API. Overwrite no longer restarts ids at 0, an overwrite fragment carrying a deletion
+  file is rejected, and any commit producing duplicate ids is rejected - so datasets written by
+  Lance 0.16 and earlier may still read but no longer commit. `dataset.get_fragment(0)` after an
+  overwrite must read ids from the manifest. Section 5 - which also covers a resolution hazard on
+  pre-0.10 unsorted manifests that can make a fragment-filtered index cover the wrong fragments.
+- **The file-version types and reader/writer composition moved** (#8020-#8026) -
+  `lance-encoding::version` deleted with no re-export; `LanceFileVersion` lost `PartialOrd`/`Ord`
+  (#8027, #8028), so `v >= LanceFileVersion::Next` no longer compiles. `FileWriter` is now an
+  enum with all constructors removed. Most of these break silently at compile time. Section 3.6.
+- **Transaction code moved to `lance-table`** (#8053/#8054/#8056) - see the crate-workspace note
+  above; the `lance::dataset::transaction` shim covers the common surface.
+- **`Operation::Project` / `Merge` gained `preserves_nullability`** (#8347) - a nullability
+  *tightening* must not set it, and such a projection now conflicts with any concurrent
+  value-write. This closed a real hole where `alter_columns` could let a racing write land nulls
+  unreadable under the tightened schema. Section 9.2.
+- **The external-manifest protocol changed** (#8499) - object storage is authoritative, the
+  external store's put-if-not-exists is a *reservation*, and a stored ETag must be **ignored**;
+  a retained one makes readers reject a good manifest with `Manifest e_tag mismatch`. Section 9.
+
+**The manifest feature flags changed** - the first new bit since v7.
 `FLAG_MEM_WAL_INDEX_CATCHUP = 128` was added and `FLAG_UNKNOWN` moved 128 -> 256. Both reader
-and writer must hold the bit or refuse the table, and **setting it is one-way** (never cleared
-as a rollback). Without it, a missing `index_catchup` entry reads as "fully caught up", so an
-index-only query could answer without the SSTables holding the newest rows. Section 7.
+and writer must hold the bit or refuse the table, and **setting it is one-way**. Without it, a
+missing `index_catchup` entry reads as "fully caught up", so an index-only query could answer
+without the SSTables holding the newest rows. Section 7.
 
-**Breaking:**
+**Two `LANCE_*` env vars landed** (from the AMX work, #8540): `LANCE_DISABLE_AMX` (runtime kill
+switch) and `LANCE_AMX_FP16_CC` (build-time compiler override). Grep trap: `LANCE_AMX_CFG_*` and
+`LANCE_AMX_TILE_COUNT` are **C macros in `amx_fp16.c`, not env vars**, and `LANCE_FACTOR` is a
+substring of `BALANCE_FACTOR` - a plain `LANCE_*` grep reports all four as if they were real.
 
-- **Fragment ids are now a dataset-lifetime high-water mark** (#8206) - the sharpest change,
-  because it is a *format* invariant, not just an API. Overwrite no longer restarts ids at 0, so
-  "an id must never name two different sets of rows". An overwrite fragment carrying a deletion
-  file is now rejected (that file's path embeds the old id), and **any** commit producing
-  duplicate ids is rejected - datasets written by Lance 0.16 and earlier may already contain
-  duplicates: still readable, no longer committable. `dataset.get_fragment(0)` after an overwrite
-  must read ids from the manifest instead.
-- **The file-version types and the whole reader/writer composition moved** (#8020-#8026) - see
-  the crate-workspace note above. `FileWriter` became an **enum** with all constructors removed;
-  `FileReader::version()` returns `ConcreteFileVersion`. Only two of these carry a `!` in the
-  commit subject; the rest break silently at compile time. Section 3.6.
-- **`DataBlockBuilder::append` is fallible** (#8172) - malformed variable-width offsets yield
-  `Error::CorruptFile`, so some files that previously "read" now error. **HNSW construction
-  changed** (#8188) - `m < 4` rejected, persisted level layout corrected; expect different graphs
-  and different recall. `MemWalIndex::force_seal_active` returns `SealFence` (#8051);
-  `MiniBlockCompressor::compress` takes a context parameter (#8038), breaking out-of-tree codecs
-  but not persisted bytes; `CacheBackend::deep_size_of_entries` (#8159) makes reported cache
-  sizes **shrink**, so anything budgeting against `LanceCache::deep_size_of()` sees new numbers.
-- **`LanceFileVersion` lost its ordering** (#8027, #8028) - `PartialOrd`/`Ord` are gone, so
-  `v >= LanceFileVersion::Next` no longer compiles; `resolve()` is now
-  `const fn resolve(self) -> ConcreteFileVersion`; `iter_non_legacy()`,
-  `support_add_sub_column()` and `support_remove_sub_column()` were deleted, as were both
-  `From` conversions between selector and concrete version. New: `stable_file_version()`
-  (V2_1) and `next_file_version()` (V2_3). Version decisions are now exhaustive matches at
-  declared boundaries, not `>=`/`max` comparisons. Section 3.6.
-- **`Operation::Project` / `Merge` gained `preserves_nullability: bool`** (#8347). Default
-  `false` means "no assertion". A nullability *tightening* must not set it - its producer
-  proved the claim by scanning at its read version, so a concurrent write can falsify it, and
-  such a projection now **conflicts with any value-write in either commit order**. This closed
-  a real hole: `alter_columns` proved NOT NULL by scanning, then committed a `Project` that
-  conflicted with nothing, so a racing write could land nulls unreadable under the tightened
-  schema. Section 9.2.
-- **MemWAL index validation replaced** (#8360) - public `is_maintainable_index_type(&str)` is
-  gone; use `validate_maintained_indexes(dataset, index_names)`. Type-URL filtering was
-  unsound (an IVF-PQ over `FixedSizeList<Float64>` passed, then made the table unwritable).
-  The new validator is all-or-nothing: it errors on the first unmaintainable index rather than
-  returning a usable subset. Section 10.
+**Worth knowing without reading the full delta:** FTS gained a document-boundary axis
+(`DocumentGranularity`, #7788) whose `list_element` mode is a third trigger requiring FTS on-disk
+format v3; transactions above **20 MiB** spill out of the manifest entirely (#7881); MemWAL
+catch-up became derived rather than declared (#8481); transaction proto field 9
+(`updated_fragment_offsets`) is deprecated for field 10 (#7432); and compaction gained row/byte
+budgets plus fragment exclusion (#8235, #8532).
 
-**Net-new:**
-
-- **FTS gained a document-boundary axis** (#7788) - `DocumentGranularity` (`ROW` /
-  `LIST_ELEMENT`), a `posting_format_version` distinct from `index_version`, a `_doc_index`
-  column. `document_granularity="list_element"` is a **third** trigger requiring FTS on-disk
-  format v3, independent of `block_size=256` and the code-analyzer tokenizer. Section 11.3.
-- **Large transactions spill out of the manifest** (#7881) - above `MAX_INLINE_TRANSACTION_BYTES`
-  (**20 MiB**; the 64 KiB figure in the PR text is the `#[cfg(test)]` value, so every non-test
-  build gets 20 MiB) the transaction lives solely in its external file. Measured: a full-commit
-  manifest shrank 1576 MiB -> ~790 MiB. No new configuration. Note this cuts *read* round trips,
-  not write ones - the separate `.txn` file is still written either way.
-- A posting-backed compound FTS scoring core (#8092-#8094, #8131, #8299) - every clause combined
-  with `AND` is a scoring `MUST` clause, so all must match **and every matching clause
-  contributes to `_score`**; exact-null zone maps over every type (#8088, #8017); pluggable cache
-  backends (#7683); the `aws_provider_scheme` storage option (#8103); `goosefs://` on
-  `ConditionalPutCommitHandler` (#8134 - if-not-exists only holds once *every* writer is
-  upgraded); multipart uploads keeping part identity across retries (#8174).
-- **MemWAL catch-up is now derived, not declared** (#8481, superseding #8263) - a commit no
-  longer carries a claim about index coverage; coverage is derived from the version the
-  transaction read. #8263's `IndexCatchupAdvance` proto message was added and then removed
-  within the same beta window, so it **never shipped in a final**. Also new: memtable
-  backpressure stats (#8241), `ShardWriter::delete` against non-nullable base columns (#8352),
-  and `MemWalIndexDetails.index_catchup` (table.proto field 10). Section 10.
-- **Transaction proto field 9 is deprecated** - `updated_fragment_offsets` gives way to field 10
-  `updated_fragment_offset_bitmaps` (portable RoaringBitmap bytes, #7432). Writers emit field 10
-  only; readers prefer 10 and fall back to 9 for older manifests. Section 9.
-- Smaller API additions: `LanceFragment.validate()` (#8428), `BlobFile.read_ranges()` (#8319),
-  `lance.fragment.RowIdSequence` (#8356 - duplicate ids now rejected instead of silently
-  mis-encoded), `write_fragments(session=...)` (#8034), `lance.tokenize` (#8415), and Java
-  cache-backend selection (#8446) plus `Index.getSizeBytes()` (#8355).
-
-**Eleven silent-corruption and wrong-results fixes landed in v11** - several invalidate advice
-that was safe to give at v10, including cleanup irreversibly deleting live overlay data (#8267)
-and `optimize_indices` leaving duplicate rows ranked by a stale vector (#8342). The full list,
-with the conditions that trigger each, is in `references/changelog-v7-v11.md`.
-
-Full delta including the Python/Java surface: `references/changelog-v7-v11.md`.
-
-### Since `beta.6` (91 commits, beta.7 -> beta.16)
-
-One newly `breaking-change`-labeled PR, **#8235**: compaction gained `max_source_rows` and
-`max_source_bytes` alongside the existing `max_source_fragments`, each also settable as a
-`lance.compaction.*` table-config key. #8532 added `excluded_fragment_ids` to keep named
-fragments out of planning entirely.
-
-**Net-new:**
-
-- **AMX-FP16 acceleration for IVF** (#8540) - see Performance below. It ships the only two new
-  `LANCE_*` env vars in the whole v11 line.
-- **Lightweight version references** (#8523) - `Dataset::version_refs()` returns `VersionRef`s by
-  listing manifest locations, without reading and deserializing every manifest the way
-  `versions()` does. Use `latest_version` when only the current branch tip is needed. Section 8.
-- **`Dataset::migrate_to_stable_row_ids`** (#8521) - in-place migration of a legacy dataset onto
-  stable row IDs. Section 8.
-- **`FileFragment::write_columns`** (#8313, renamed by #8622) - per-fragment column writes that
-  survive compaction.
-- **MemWAL shard pruning** - the planner evaluates predicates against shard fields and skips
-  shards whose computed shard values cannot match. Section 10.
-- Format surface the skill previously never named: `VersionAuxData` (on-demand key/value metadata
-  attached to a version, `table.proto`), `IndexSection` (the per-version index-metadata container
-  the manifest points at), and `TableIdentifier`'s two remote-reconstruction modes -
-  `uri + serialized_manifest` (fast, the remote executor skips the manifest read) versus
-  `uri + version + etag` (lightweight, it loads the manifest from storage). Sections 5 and 16.
-- `lance-datafusion` parses **Substrait** filter and aggregate expressions
-  (`parse_substrait`), and `index.proto` carries a **`DiskAnn`** persisted stage. Sections 12, 11.
-
-**The external-manifest-store protocol changed** (#8499) - object storage is now authoritative.
-The external store's put-if-not-exists is a *reservation* that selects one immutable staging
-object; the commit point is the successful copy to the deterministic `{version}.manifest` path.
-A stored ETag must be **ignored, not trusted** - concurrent finalizers can copy identical bytes
-into different physical generations, so a retained ETag makes later readers reject a perfectly
-good manifest with `Manifest e_tag mismatch`. Legacy rows converge with no migration, but the
-stale-ETag race can still fire while legacy *finalizers* remain in the fleet. Section 9.
-
-The correctness fixes in this window split into **heals-on-upgrade** (most of them - read-path
-only) and **requires rewriting or repairing data on disk**: #8382 (variable-width offsets),
+**Correctness fixes split by whether upgrading is enough.** Most are read-path only and heal on
+upgrade. These do **not** - they need data rewritten or repaired: #8382 (variable-width offsets),
 #8669 (JSON columns updated from string expressions), #8509 (re-run affected merges), #7703 and
 #8539 (bad manifests already committed - validation is commit-time only), #8459 (a clobbered tag
 is unrecoverable and undetectable), #8378 (data "written to a UNC URL" landed on the local
-drive), #8482 (re-run the distributed FTS build). Full conditions in
+drive), #8482 (re-run the distributed FTS build). Conditions for each in
 `references/changelog-v7-v11.md`.
 
 ## Performance questions

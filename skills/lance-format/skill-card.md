@@ -63,7 +63,7 @@ Other properties: Reference-only skill - it performs no I/O itself; code it prod
 
 ## Skill Version
 
-0.16.0
+0.17.0
 
 ## Ethical Considerations
 

@@ -7,6 +7,36 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-21
+
+### Changed
+
+- Condensed `SKILL.md` from 24,463 to ~18,300 chars by trimming "The v11 delta" from ~10,400
+  chars (42% of the file) to a summary plus a pointer. **No information was lost**: all 54 PR
+  citations in that section already appeared verbatim in `references/changelog-v7-v11.md`, which
+  exists to hold exactly this content. The retained summary keeps the five changes that break
+  upgraders, the manifest feature-flag change, the `LANCE_*` grep trap, and the
+  heals-on-upgrade vs requires-rewrite split. Rationale: the per-PR delta is needed only by
+  someone upgrading across majors, so it satisfies the conditional-loading test for living in a
+  reference file, and the entry point was within 550 chars of the 25k recommended budget.
+- Corrected the `check_fragment_ids` citation to `rust/lance/src/io/commit.rs:687`.
+
+### Added
+
+- `format-table.md` section 5.3: "Legacy manifests and fragment resolution", documenting that
+  `Dataset::get_frags_from_ordered_ids` resolves ids as
+  `manifest.fragments[fragment_bitmap.rank(id) - 1]` - correct only when `manifest.fragments` is
+  sorted by id, guarded only by a `debug_assert_eq!` that compiles out in release. Its sibling
+  `find_fragment` was given a check-and-fall-back guard for exactly these legacy shapes (#8636).
+  Covers which legacy shape is reachable (unsorted pre-0.10 manifests pass every commit-time
+  check; duplicate-id manifests are largely blocked by `check_fragment_ids`, whose `windows(2)`
+  scan only detects *adjacent* duplicates), and how consequences differ by caller -
+  `take.rs:305` re-checks the returned id and so drops rows, while `index/scalar.rs:233` does
+  not and can train an index on the wrong fragments. **Flagged explicitly as a static finding,
+  not a demonstrated defect**: read at `v11.0.0-beta.16`, not reproduced, and not a reported
+  upstream issue. Notes that the upstream test which appears to cover this varies only the query
+  array order, not the manifest order.
+
 ## [0.16.0] - 2026-08-21
 
 ### Changed

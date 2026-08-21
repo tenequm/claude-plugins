@@ -114,11 +114,58 @@ consequences:
   cannot follow its fragment to a new id, because its path embeds the old one
   (`_deletions/{fragment_id}-{read_version}-{id}`).
 - **Any** commit producing duplicate ids is rejected (`check_fragment_ids`,
-  `rust/lance/src/io/commit.rs:711`). Datasets written by Lance 0.16 and earlier could contain
+  `rust/lance/src/io/commit.rs:687`). Datasets written by Lance 0.16 and earlier could contain
   duplicates: they still read, but "can no longer be committed to" - they must be rewritten or
   rolled back to a version without the duplicate.
 
 `ManifestNamespace::manifest_from_overwrite_transaction` is carved out and still restarts at 0.
+
+#### Legacy manifests and fragment resolution (read this before trusting a fragment subset)
+
+Two manifest shapes predate the current invariants and are **still readable**: fragments not in
+id order (Lance 0.10 and earlier) and duplicate fragment ids (Lance 0.16 and earlier). Neither
+is rejected on read. `find_fragment` handles both - it binary-searches, then checks the result
+and falls back to a linear scan, because "returning some other fragment's data would be silent
+corruption" (`rust/lance/src/dataset.rs:2871-2888`).
+
+**Its sibling `Dataset::get_frags_from_ordered_ids` does not have that guard**
+(`rust/lance/src/dataset.rs:2850-2867`). It resolves each id as
+`manifest.fragments[fragment_bitmap.rank(id) - 1]`. `fragment_bitmap` is built by collecting
+fragment ids into a `RoaringBitmap` (`:885`), which is inherently sorted, so `rank(id) - 1` is
+the id's index in the **sorted** id set - while the subscript indexes `manifest.fragments` in
+**stored** order. The two agree only if the stored vector is sorted by id. On an unsorted legacy
+manifest they diverge, and the only guard is a `debug_assert_eq!`, which compiles out in release.
+Concretely, a manifest storing `[id=7, id=3, id=5]` resolves 7 -> fragment 5, 3 -> fragment 7,
+and 5 -> fragment 3.
+
+Which legacy shape can actually reach this differs:
+
+- **Duplicate ids** - largely self-limiting, since `check_fragment_ids` makes the dataset
+  uncommittable, so index-building paths fail loudly first. Note that check scans
+  `manifest.fragments.windows(2)` for adjacent equal ids, so it detects duplicates **only when
+  the manifest is sorted**; non-adjacent duplicates on an unsorted manifest pass it.
+- **Unsorted fragments, no duplicates** - passes every commit-time check and is the shape that
+  breaks the rank arithmetic.
+
+Consequences differ by caller, and the difference matters:
+
+- `dataset/take.rs:305` re-looks-up offsets by the returned fragment's own `id()`, so a
+  misresolution drops slots rather than mis-attributing values - the failure mode is **silently
+  missing rows**, not wrong values.
+- `index/scalar.rs:233` zips the requested ids against the resolved fragments and takes
+  `frag.metadata()` with **no id re-check**, so a scalar index built over a fragment subset would
+  train on the wrong fragments while recording the requested ids as its coverage.
+- `index/create.rs:937` discards the result (existence check only) and is unaffected.
+
+**Status: a static finding, not a demonstrated defect.** The mechanism and the call sites above
+were read at `v11.0.0-beta.16`; no legacy dataset was constructed to drive the path, and it is
+not a reported upstream issue. The upstream test that looks like it covers this,
+`test_get_frags_from_ordered_ids_accepts_unsorted_duplicates` (`rust/lance/src/index/create.rs:1348`),
+writes a **fresh** dataset and varies only the *query array* order - which is the documented
+flexibility ("The ids do not need to be sorted or deduplicated"); the manifest-ordering
+assumption is untested. Practical guidance: if you operate datasets written by Lance 0.10 or
+earlier, rewrite them before building indexes over fragment subsets, and do not assume a
+fragment-filtered index covers the fragments you named.
 
 **Do not key application state on fragment ids.** Independently of the above, any operation
 that rewrites a fragment mints new ids, so caches, delta detectors, or coverage checks that
