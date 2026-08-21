@@ -1,9 +1,39 @@
+# These local hooks mirror every check `just check` runs, so a commit that
+# would fail CI fails here instead. `just check` also runs this file via
+# `pre-commit run --all-files`, so each check lives in exactly one place.
 repos:
   - repo: local
     hooks:
       - id: lint-skills
         name: lint-skills
         entry: uv run python scripts/check_skills.py
+        language: system
+        pass_filenames: false
+
+      - id: lint-python
+        name: lint-python
+        entry: uv run ruff check scripts
+        language: system
+        pass_filenames: false
+
+      - id: format-python
+        name: format-python
+        entry: uv run ruff format --check scripts
+        language: system
+        pass_filenames: false
+
+      - id: typecheck-python
+        name: typecheck-python
+        entry: uv run ty check scripts
+        language: system
+        pass_filenames: false
+
+      # --check, not a regenerate: a hook that rewrote README.md mid-commit
+      # would stage a file the author never saw. CI's own gate is `readme`
+      # plus `git diff --exit-code`, which fails on exactly this drift.
+      - id: readme-sync
+        name: readme-sync
+        entry: uv run python scripts/generate_readme.py --check
         language: system
         pass_filenames: false
 
