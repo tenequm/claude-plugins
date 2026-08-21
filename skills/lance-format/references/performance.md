@@ -1,6 +1,6 @@
 # Lance performance - combined reference
 
-Everything performance-shaped for Lance (`lance-format/lance@v11.0.0-beta.6`) in one place.
+Everything performance-shaped for Lance (`lance-format/lance@v11.0.0-beta.16`) in one place.
 **Part A** routes to the official guidance - which lives verbatim in this skill's
 `references/docs/` mirror, so it is pointed at rather than re-copied - and then adds the
 performance behavior upstream has *not* documented, derived from source and commit history.
@@ -40,9 +40,11 @@ Read these directly - they are byte-verbatim copies of the upstream docs at the 
 
 Provenance: `docs/src/guide/performance.md` was byte-unchanged from `v9.1.0-beta.8` through
 `v11.0.0-beta.2`, then **changed at `v11.0.0-beta.4`** (#8387), which added the "Tuning remote
-scans" section and a `row_id_meta` component to the Row Id Sequence cache key. The mirror is
-refreshed to `v11.0.0-beta.6`, so every number, default, and recommendation in it is current as
-written; the other perf-bearing sections above remain byte-unchanged across that range.
+scans" section and a `row_id_meta` component to the Row Id Sequence cache key, and **again at
+`v11.0.0-beta.16`** (#8540), which appended the "AMX Acceleration" section (+29 lines, no other
+edit). The mirror is refreshed to `v11.0.0-beta.16`, so every number, default, and
+recommendation in it is current as written; the other perf-bearing sections above remain
+byte-unchanged across that range.
 
 ## OpenTelemetry metrics (not in the performance guide)
 
@@ -96,7 +98,7 @@ is gone.
 
 ## Performance changes not in the guide (v11, source-derived)
 
-Same caveat as above: verified against the `v11.0.0-beta.6` source and commit history, absent
+Same caveat as above: verified against the `v11.0.0-beta.16` source and commit history, absent
 from `docs/src/guide/performance.md`.
 
 **Large commits got much cheaper on the manifest side** (PR #7881). Transactions serialized
@@ -131,6 +133,65 @@ processed oldest first." Also settable as the manifest config key
 `lance.compaction.max_source_fragments`. This is the clean answer to "compaction takes too long
 to ever finish in my maintenance window" - previously the only lever was letting it run to
 completion.
+
+**Two more budgets joined it at `beta.8`** (PR #8235, `breaking-change`-labeled):
+`max_source_rows: Option<usize>` and `max_source_bytes: Option<u64>`
+(`rust/lance/src/dataset/optimize.rs:278,287`), each also settable as
+`lance.compaction.max_source_rows` / `lance.compaction.max_source_bytes` (`:363-365`). Prefer
+these over `max_source_fragments` when fragments vary widely in size - a fragment count is a
+poor proxy for work when one fragment holds 100x the rows of another, and bytes is the closest
+proxy to actual IO. And at `beta.14`, `excluded_fragment_ids: Vec<u32>` (`:295`, PR #8532)
+keeps named fragments out of planning entirely - the lever for "compact everything except the
+partition currently being written".
+
+**AMX-FP16 changes index *results*, not just speed** (PR #8540, `beta.16`). This one is now
+documented upstream - the "AMX Acceleration" section of `guide/performance.md` - but it deserves
+flagging here because it is the rare performance change that alters what an index contains. On
+Linux x86_64 with an AMX-FP16 CPU (Intel Granite Rapids / Xeon 6 and newer), `float16` vector
+columns using `dot` route partition assignment through tile instructions. Three gates, all
+required, all silently declining the work when unmet: `float16` + `dot`, `dimension >= 32` (one
+tile pass covers 32 dimensions), and `num_centroids >= 32` (the GEMM steps its centroid loop by
+32 with no partial-tile path). Below those sizes a tile pass costs more than it saves.
+
+Where it does engage, **index build switches from an approximate graph search over the centroids
+to comparing every vector against every centroid**. Recall improves and partition assignments
+differ from what an older build produced - so a rebuild on new hardware is not a no-op, and an
+A/B against an older index is comparing two different indexes. `LANCE_DISABLE_AMX=1` takes the
+paths out of service without a rebuild, but because it also reverts assignment to the
+approximate path, "an index built with it set is not equivalent to one built without it;
+compare recall, not just build time". Availability is also a **build-time** property: the kernel
+only exists if the build machine had clang >= 16 or gcc >= 13, with `LANCE_AMX_FP16_CC`
+overriding the compiler choice (`rust/lance-linalg/build.rs:27`).
+
+**There is no resident data cache.** A `Session` carries exactly two caches - `index_cache` and
+`metadata_cache` (`rust/lance/src/session.rs:49-70`) - holding structural metadata (manifests,
+schemas, page tables, row-id maps) and index pages. **Decoded column values are never cached**,
+and there is no caching `ObjectStore` wrapper, so repeatedly taking the same rows re-reads their
+value buffers from the object store every single call. If a workload does repeated point reads
+of a hot row set, the cache to add is your own, above Lance; no amount of `index_cache_size_bytes`
+tuning will do it.
+
+What a `Session` *does* buy is sharing. Passing one `Arc<Session>` to several datasets via
+`DatasetBuilder::with_session` (`rust/lance/src/dataset/builder.rs:525`) lets them share
+index and metadata caches instead of each paying its own cold start - worth doing whenever one
+process opens several datasets, which is the normal shape for a namespace of tables.
+
+**Cold first search on remote storage is dominated by paging indexes in**, and the remedy is
+`prewarm_index(name)` - or `prewarm_index_segments(name, segment_ids)` to warm only chosen
+segments (`rust/lance/src/index/api.rs:194-238`; exposed on the Python `Dataset`). Note what
+prewarming does *not* fix: it loads index structures, so a query whose cost is dominated by
+**materializing the hit rows' other columns** - scattered point reads, roughly one per
+hit-row-fragment - sees little benefit. Diagnose which half you are in before optimizing;
+prewarm helps the index half only.
+
+**Two per-operation stats structs that callers routinely discard.** Merge-insert returns
+`MergeStats` with `num_inserted_rows` / `num_updated_rows` / `num_deleted_rows` and
+`num_attempts` (`rust/lance/src/dataset/write/merge_insert.rs:2739`) - `num_attempts` is the
+direct read on how much OCC contention a write is actually hitting, which is otherwise
+invisible. And `Scanner::scan_stats_callback` (`rust/lance/src/dataset/scanner.rs:1349`)
+delivers `ExecutionSummaryCounts` (see `indexes.md`) per scan, giving `iops`, `requests`, and
+`bytes_read` without an `EXPLAIN ANALYZE` round trip - the cheapest way to verify that a
+"minimize remote calls" change actually reduced calls.
 
 **Multipart uploads no longer lose parts on retry** (PR #8174). The old path called
 `put_part` again on failure, and native cloud stores allocate a fresh part number for that call,
@@ -289,8 +350,19 @@ analogue on object storage. Mechanism, verified at `v11.0.0-beta.2`:
   fsync-on-write `WrappingObjectStore` (file plus parent directory after every put,
   multipart-complete, copy, and rename) installed innermost in the store-wrapper chain and gated
   to local URLs only, plus a `_versions/` walk on open that rename-quarantines undersized
-  manifests. The fsync layer's measured cost on a multi-GiB, few-hundred-thousand-row corpus
-  sync was not detectable.
+  manifests. A later A/B put a number on the fsync layer's cost, superseding an earlier
+  "not detectable" reading: **+5.54 s real on a 130.86 s sync, +4.2%** - and that is with
+  macOS's notoriously expensive `F_FULLFSYNC`. It stays small for a structural reason worth
+  internalizing: Lance writes **few, large** files, so fsyncs amortize per-file, not per-row.
+  Expect the same shape on any workload with that write profile, and expect it to degrade if
+  you push Lance into many-small-files territory.
+- **Verify recovery with a full-projection scan, not an id-only probe.** A scan that projects
+  only the id column reads only that column's data files, so a crash-zeroed data file behind a
+  *different* column - the classic case being a column added later, such as an embedding
+  vector - stays invisible and the probe passes. Drain a scan that projects every column.
+- The local-store rules above cover `file+uring://` as well as `file://`; both report
+  `is_local() == true`. A scheme comparison written as `scheme == "file"` silently skips uring
+  stores.
 
 ## Index maintenance
 
@@ -544,7 +616,7 @@ not in release notes:
   ship a final (2026-08-08, on `release/v10.0`) - note that finals are cut on `release/vX.Y`
   branches, so "not an ancestor of `main`" is normal and not a sign the release is unofficial.
   "Upgrade to the latest major" is still not a valid plan without checking which majors actually
-  have finals - as of `v11.0.0-beta.6` that is `v10.0.0` and below.
+  have finals - as of `v11.0.0-beta.16` that is `v10.0.0` and below.
 - **v11 changes fragment-id semantics** (PR #8206). Overwrite no longer restarts ids at 0, and
   any commit producing duplicate ids is now rejected. Two audit items on a bump: code that reads
   a fragment by a hardcoded id after an overwrite, and any dataset written by Lance 0.16 or

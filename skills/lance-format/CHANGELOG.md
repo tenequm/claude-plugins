@@ -7,6 +7,66 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-21
+
+### Changed
+
+- Re-grounded from `v11.0.0-beta.6` to `v11.0.0-beta.16` (91 commits, 1 newly
+  `breaking-change`-labeled PR: #8235).
+- v11 delta figures re-grounded: 222 commits / 13 breaking PRs (accurate at beta.6) ->
+  **313 commits / 14 breaking PRs** at beta.16. All other structural invariants re-verified
+  and unchanged (26 crates, 16 transaction ops, `num_retries` 20, `next => 2.3` / default 2.1,
+  arrow 58, datafusion 54, MSRV 1.91.0, Edition 2024, Python 3.10+, manifest feature flags).
+- **Corrected:** "No new `LANCE_*` env vars landed in v11" was false in two places. `LANCE_DISABLE_AMX`
+  (runtime kill switch) and `LANCE_AMX_FP16_CC` (build-time compiler override) both landed in
+  beta.16. Added the grep trap that `LANCE_AMX_CFG_*` / `LANCE_AMX_TILE_COUNT` are C macros,
+  not env vars.
+- **Corrected:** the v10 external-manifest note is superseded by #8499 - object storage is now
+  authoritative, the external store's put-if-not-exists is a *reservation* rather than the
+  commit point, and a stored ETag must be ignored rather than trusted (a retained one makes
+  readers reject a good manifest with `Manifest e_tag mismatch`).
+- **Corrected:** "stable row IDs cannot be turned on later" is superseded by
+  `Dataset::migrate_to_stable_row_ids` (#8521).
+- Three citations retargeted: `rust/lance/src/dataset/transaction.rs` was deleted upstream
+  (#8053/#8054/#8056); the code now lives in `rust/lance-table/src/transaction/`. Documented
+  that the `lance::dataset::transaction` re-export shim survives, so the common surface holds.
+- Java SDK doc link fixed: `lance-format.github.io/lance-java-doc` 404s; upstream points at
+  javadoc.io. Added the canonical `lance.org` docs domain.
+- `references/ops.md` proto list completed (12 protos exist, 9 were listed).
+- `references/maintenance.md` mirror-deviation #3 corrected: the trailing-newline hook adds a
+  byte to all **four** `.drawio.svg` diagrams, not one; recorded the two-step normalization that
+  reproduces the mirror byte-for-byte.
+- `references/performance.md` Part A provenance updated - `guide/performance.md` changed again
+  at beta.16 (+29 lines, AMX).
+- Part B: the fsync-wrapper cost "was not detectable" is superseded by a measured **+4.2%**
+  (5.54 s on a 130.86 s sync, macOS `F_FULLFSYNC`), with the per-file amortization that explains it.
+- Refreshed the 4 stale files in the `references/docs/` mirror; counts unchanged (45 md + 4 svg).
+
+### Added
+
+- AMX-FP16 IVF acceleration: the three shape gates, the switch from approximate to **exact**
+  partition assignment (recall and assignments both change), the `LANCE_DISABLE_AMX` kill switch,
+  and the clang >= 16 / gcc >= 13 build requirement.
+- `version_refs()` / `VersionRef`; `Dataset::migrate_to_stable_row_ids`; compaction
+  `max_source_rows` / `max_source_bytes` / `excluded_fragment_ids`; `FileFragment::write_columns`.
+- MemWAL shard pruning; `VersionAuxData`; `IndexSection`; `TableIdentifier`'s two remote
+  reconstruction modes; Substrait filter/aggregate parsing; the `DiskAnn` proto stage.
+- `file+uring://` added to the object-store scheme list, with the note that `is_local()` covers it.
+- Cache and observability guidance: Lance has **no resident data cache**; shared `Arc<Session>`
+  via `DatasetBuilder::with_session`; `prewarm_index` for cold search (and what it does not fix);
+  `MergeStats` and `Scanner::scan_stats_callback`.
+- The `merge_insert` "Ambiguous merge inserts are prohibited" error documented as deterministic
+  and **non-retryable** - an OCC retry loop must not swallow it.
+- `changelog-v7-v11.md` gained a beta.6 -> beta.16 delta splitting the correctness fixes into
+  **heals-on-upgrade** vs **requires rewriting data on disk**, plus the #7966 ZoneMap caveat
+  (reads heal, pruning selectivity does not until reindex).
+
+### Security
+
+- Noted #8613: `h2` bumped to 0.4.16 for RUSTSEC-2026-0258.
+
+Verified against: lance-format/lance@v11.0.0-beta.16
+
 ## [0.15.0] - 2026-08-12
 
 ### Changed

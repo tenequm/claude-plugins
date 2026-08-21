@@ -1,8 +1,8 @@
 # Lance v11 reference - indexes and distributed builds (sections 11-12)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -50,6 +50,10 @@ Every vector index has **three orthogonal parts: clustering, sub-index, quantiza
 
 The seven documented combinations: `IVF_FLAT`, `IVF_PQ`, `IVF_SQ`, `IVF_RQ`,
 `IVF_HNSW_FLAT`, `IVF_HNSW_SQ`, `IVF_HNSW_PQ`.
+
+`protos/index.proto:115` also carries a **`DiskAnn`** stage message. It is part of the persisted
+wire format rather than one of the seven documented builder combinations - expect to encounter
+it when reading index protos, not when choosing an index type.
 
 **Distance metrics** (`VectorMetricType`): `L2` (0), `Cosine` (1), `Dot` (2), `Hamming` (3).
 SIMD kernels in `lance-linalg`; the `fp16kernels` feature compiles C SIMD kernels for fp16.
@@ -580,7 +584,7 @@ from the union of each index's own `fragment_bitmap` and does not consult the FR
 (`rust/lance/src/index.rs:2977-2985`). With `defer_index_remap = true` the remapper is `None`,
 so `rewritten_indices` is empty and `handle_rewrite_indices` is a no-op - the per-index bitmaps
 keep the *old* fragment ids while the FRI is appended separately as its own index entry
-(`rust/lance/src/dataset/transaction.rs:2186-2187`). Consequence: deferring remap does **not**
+(`rust/lance-table/src/transaction/index_maintenance.rs:338`). Consequence: deferring remap does **not**
 stop `unindexed_fragments(<idx>)` from reporting the new fragments, so a "is my index caught up?"
 check built on that call will still see churn after every compaction. The FRI removes the cost of
 *rewriting* index entries, not the bookkeeping that says an index does not cover a fragment.
@@ -590,7 +594,15 @@ check built on that call will still see churn after every compaction. The FRI re
 ## 12. Distributed write and indexing
 
 Lance exposes APIs for distributed work but provides **no scheduler** - the caller drives the
-workflow (Ray and Spark integrations exist for the common cases).
+workflow (Ray and Spark integrations exist for the common cases). How a table is handed to a
+remote executor is `TableIdentifier` (`protos/table_identifier.proto`) - two modes, see
+`ops.md` section 16.
+
+**Substrait.** `lance-datafusion` parses Substrait filter and aggregate expressions
+(`parse_substrait` / `parse_substrait_aggregate`, `rust/lance-datafusion/src/substrait.rs:385,473`),
+exposed through the Python bindings and the filtered-read exec node. This is the path for
+handing Lance a language-agnostic serialized predicate rather than a SQL string - useful when
+the planner producing the filter is not itself Rust or Python.
 
 **Two-phase distributed write** (`docs/src/guide/distributed_write.md`):
 

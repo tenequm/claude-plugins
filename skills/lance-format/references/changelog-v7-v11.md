@@ -1,8 +1,8 @@
 # Lance changelog - v7 -> v11 (section 14)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -24,7 +24,7 @@ the direct ancestor of `v11.0.0-beta.1`, one bump commit apart. The re-root renu
 `v10.0.0-beta.7` and took one substantive backport (`10d0c9f2e fix: backport encoding and FTS
 fixes to release/v10.0`, #8146). It is **not** an ancestor of `main` - finals are cut on
 `release/vX.Y` branches, so that is normal. `v10.0.0-beta.7` **is** an ancestor of
-`v11.0.0-beta.6`, but `v10.0.0-rc.3` and `v10.0.0` are not.
+`v11.0.0-beta.16`, but `v10.0.0-rc.3` and `v10.0.0` are not.
 
 **`v10.0.0` is the stable pin** (2026-08-08, superseding `v9.0.1`), and it is what GitHub
 Releases marks `Latest`. `v9.0.1` (2026-08-06, superseding `v9.0.0`, 2026-07-24) shipped with
@@ -49,7 +49,8 @@ any beta pin is a git dependency; beta artifacts publish to fury.io
 - [The v9.0.0-beta.18 -> v9.1.0-beta.8 delta](#the-v900-beta18---v910-beta8-delta)
 - [The v9.1.0-beta.8 -> v10.0.0-beta.7 delta](#the-v910-beta8---v1000-beta7-delta)
 - [The v10.0.0-beta.7 -> v11.0.0-beta.2 delta](#the-v1000-beta7---v1100-beta2-delta)
-- [The v11.0.0-beta.2 -> v11.0.0-beta.6 delta (current tag)](#the-v1100-beta2---v1100-beta6-delta-current-tag)
+- [The v11.0.0-beta.2 -> v11.0.0-beta.6 delta](#the-v1100-beta2---v1100-beta6-delta)
+- [The v11.0.0-beta.6 -> v11.0.0-beta.16 delta (current tag)](#the-v1100-beta6---v1100-beta16-delta-current-tag)
 - [v11 silent-corruption and wrong-results fixes](#v11-silent-corruption-and-wrong-results-fixes)
 
 Other files: `format-file.md` (1-4), `format-table.md` (5-10), `indexes.md` (11-12),
@@ -77,9 +78,10 @@ the full v7 history below (still useful context), the **v7.2.0-beta.5 -> v8.0.0-
 **v8.0.0-beta.14 -> v9.0.0-beta.10 delta** (the v8->v9 major boundary), the
 **v9.0.0-beta.10 -> v9.0.0-beta.16 delta**, the **v9.0.0-beta.16 -> v9.0.0-beta.18 delta**,
 the **v9.0.0-beta.18 -> v9.1.0-beta.8 delta**, the **v9.1.0-beta.8 -> v10.0.0-beta.7 delta**,
-the **v10.0.0-beta.7 -> v11.0.0-beta.2 delta**, and finally the **v11.0.0-beta.2 ->
-v11.0.0-beta.6 delta** (the current tag - most important for a v11 reader) plus a consolidated
-list of v11's silent-corruption and wrong-results fixes at the very end.
+the **v10.0.0-beta.7 -> v11.0.0-beta.2 delta**, the **v11.0.0-beta.2 -> v11.0.0-beta.6 delta**,
+and finally the **v11.0.0-beta.6 -> v11.0.0-beta.16 delta** (the current tag - most important
+for a v11 reader) plus a consolidated list of v11's silent-corruption and wrong-results fixes
+at the very end.
 
 **The v6 -> v7 breaking change.** `feat!: make dataset object store access base-aware`
 (PR #6647, commit `456198cd`), immediately followed by the automated bump to `7.0.0-beta.1`.
@@ -526,6 +528,7 @@ datafusion 54 / opendal 0.57 / jieba 0.10 / itertools 0.14 /
   per-shard admission ceiling that silently refuses oversized entries. Section 9.4.
 - Cross-store `deep_clone` via `CommitBuilder::with_source_store` (#7545); commit-retry backoff
   overflow capped at `MAX_SLOTS = 128` (#7883); external-manifest finalization always HEADs
+  (superseded at beta.8 by #8499 - the ETag from that HEAD must not be persisted; see below)
   (#7964); `memory://` `DatasetNotFound` fix (#8068); tokio-shutdown panic becomes an I/O error
   (#7478); `LANCE_CPU_THREADS` / `LANCE_IO_CORE_RESERVATION` validated (#7856); dir namespace
   surfaces throttles instead of `TableNotFound` (#7931) and honors `structured_query` FTS
@@ -624,11 +627,11 @@ and exposes the same 18 algorithms. `strum` and the direct `goosefs-sdk` depende
 
 ---
 
-### The v11.0.0-beta.2 -> v11.0.0-beta.6 delta (current tag)
+### The v11.0.0-beta.2 -> v11.0.0-beta.6 delta
 
-94 commits, 90 PRs, **four `breaking-change`-labeled**: #8027, #8028, #8347, #8360. This brings
-the full v11 delta from `v10.0.0-beta.7` to **222 commits and 13 breaking PRs** (#8024, #8025,
-#8026, #8027, #8028, #8051, #8095, #8159, #8172, #8188, #8206, #8347, #8360).
+94 commits, 90 PRs, **four `breaking-change`-labeled**: #8027, #8028, #8347, #8360. At that tag
+the full v11 delta from `v10.0.0-beta.7` stood at **222 commits and 13 breaking PRs** (#8024,
+#8025, #8026, #8027, #8028, #8051, #8095, #8159, #8172, #8188, #8206, #8347, #8360).
 
 **Breaking:**
 
@@ -705,11 +708,86 @@ the full v11 delta from `v10.0.0-beta.7` to **222 commits and 13 breaking PRs** 
 
 ---
 
+### The v11.0.0-beta.6 -> v11.0.0-beta.16 delta (current tag)
+
+91 commits, **one newly `breaking-change`-labeled**: #8235. This brings the full v11 delta from
+`v10.0.0-beta.7` to **313 commits and 14 breaking PRs** (#8024, #8025, #8026, #8027, #8028,
+#8051, #8095, #8159, #8172, #8188, #8206, #8235, #8347, #8360). Structural invariants all held
+at beta.16: 26 crates, 16 transaction ops, `num_retries` 20, `next => 2.3` / default 2.1 (no
+2.4), arrow 58, datafusion 54, MSRV 1.91.0, Edition 2024, Python 3.10+, manifest feature flags
+unchanged (`FLAG_MEM_WAL_INDEX_CATCHUP` 128, `FLAG_UNKNOWN` 256).
+
+**Breaking:**
+
+- **Compaction gained row and byte budgets** (#8235) - `max_source_rows: Option<usize>` and
+  `max_source_bytes: Option<u64>` join `max_source_fragments` on `CompactionOptions`
+  (`rust/lance/src/dataset/optimize.rs:278,287`), each with a matching `lance.compaction.*`
+  config key. The label is on the options struct changing shape; the feature itself is additive.
+
+**Net-new:**
+
+- **Lightweight version references** (#8523) - `Dataset::version_refs()` -> `Vec<VersionRef>`
+  lists manifest locations without deserializing every manifest, unlike `versions()`. Section 7.
+- **`Dataset::migrate_to_stable_row_ids`** (#8521) - one `Merge` commit converts an existing
+  dataset to stable row IDs and flips the flag atomically; `with_max_retries(0)`, so quiesce
+  writers first. Supersedes "stable row IDs cannot be turned on later". Section 8.
+- **Per-fragment column writes** (#8313, renamed `write_columns` by #8622) - survive compaction.
+- **Compaction fragment exclusion** (#8532) - `excluded_fragment_ids: Vec<u32>` (`optimize.rs:295`).
+- **AMX-FP16 IVF acceleration** (#8540) - ships `LANCE_DISABLE_AMX` and `LANCE_AMX_FP16_CC`, the
+  only new `LANCE_*` env vars in the whole v11 line, and makes partition assignment exact where
+  it engages. See `performance.md`.
+- **External manifest stores: object storage became authoritative** (#8499). Section 9.3.
+- FTS: MAXSCORE for pure SHOULD queries and its metrics (#8474, #8475), exact posting load
+  policies (#8667), chunked posting reads during segment merge (#8668). Java: manifest writer
+  version and location metadata (#8450, #8451), efficient dataset version count (#8453).
+- `perf(dataset)`: `get_fragment` binary-searches the manifest (#8636), with a fall-back to
+  linear scan for legacy manifests that are unsorted (Lance <= 0.10) or hold duplicate fragment
+  ids (Lance <= 0.16) - the same legacy shapes #8206 made uncommittable.
+
+**Correctness fixes in this window, split by whether upgrading is enough.**
+
+*Requires rewriting or repairing data already on disk - upgrading alone does not heal it:*
+
+- #8382 - malformed variable-width Arrow offsets. Reachable in practice via `slice_arrays`
+  page-splitting, so not theoretical.
+- #8669 - JSON columns updated from string expressions hold raw text. Rows updated with an
+  explicit `jsonb '...'` were always fine.
+- #8509 - reordered sources in indexed merge insert; re-run the affected merges (the old
+  statistics were misleading too).
+- #7703, #8539 - invalid manifests already committed; validation is commit-time only, so
+  existing bad manifests stay bad.
+- #8459 - non-atomic tag creation. A clobbered tag is **unrecoverable and undetectable**;
+  re-create it manually.
+- #8378 - Windows UNC share roots. Data "written to a UNC URL" actually landed on the local drive.
+- #8482 - FTS metadata not written when a distributed build had no partitions; re-run the build.
+
+*Read-path only, heals on upgrade:* #7371, #7966, #8443, #8525, #8534, #8536, #8542, #8577,
+#8587, #8588, #8591, #8592, #8593, #8594, #8595, #8596, #8597, #8598, #8599, #8600, #8602,
+#8603, #8609, #8613, #8618, #8620, #8636, #8650, #8666, #8668, #8682, #8687, #8388, #8381.
+
+Three worth calling out individually:
+
+- **#7966** is not purely a type-support widening. ZoneMap zones over Decimal128/256 columns
+  written by **Lance 8.0.0** carry typed-null extrema despite holding real values, and the old
+  `zone_has_finite_min` guard skipped those zones - silently dropping matching rows. Reading
+  heals on upgrade, but **pruning selectivity stays degraded until the index is rebuilt**
+  (`rust/lance-index/src/scalar/zonemap.rs:203-205`).
+- **#8542** - `multivec_distance` with a query length that is not a positive multiple of `dim`
+  silently scored every row `1.0 - 0.0` instead of erroring (`rust/lance-linalg/src/distance.rs:411`).
+- **#8499** is the special case: legacy external-store rows still carry `e_tag`, but new readers
+  set `e_tag: None` and ignore them, so mixed-version rows converge with **no migration**. The
+  stale-ETag race can still fire while legacy *finalizers* remain in the fleet.
+
+**Security:** #8613 bumps `h2` to 0.4.16 for RUSTSEC-2026-0258.
+
+---
+
 ### v11 silent-corruption and wrong-results fixes
 
 Eleven fixes in the v11 line address failures that produced **no error** - wrong data, missing
 rows, or a hang. Each names the condition that triggers it, so you can tell whether a dataset
-written on an earlier v11 beta is affected.
+written on an earlier v11 beta is affected. The `beta.6 -> beta.16` window added more; they are
+listed in that delta above, split by whether upgrading is enough.
 
 **Data-loss class:**
 

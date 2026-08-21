@@ -1,8 +1,8 @@
 # Lance v11 reference - object store, capabilities, source map (sections 13, 15, 16)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -23,7 +23,13 @@ Other files: `format-file.md` (1-4), `format-table.md` (5-10), `indexes.md` (11-
 The object store is chosen by URI scheme (`docs/src/guide/object_store.md`): `s3://`,
 `s3+ddb://` (S3 + DynamoDB commits), `gs://`, `az://` / `abfss://`, `oss://` (Alibaba),
 `cos://` (Tencent), `tos://` (Volcengine, new in v8), `goosefs://` (feature-gated `goosefs`,
-new in v8), `file://`, `memory://`, `shared-memory://` (in-memory, cross-component).
+new in v8), `file://`, `file+uring://`, `memory://`, `shared-memory://` (in-memory,
+cross-component).
+
+`file+uring://` is a **local** store, not a remote one: `is_local()` returns true for both
+`file` and `file+uring` (`rust/lance-io/src/object_store.rs:630`), and
+`is_uring()` distinguishes it (`:653`). Any rule stated for "the local store" therefore covers
+it - a scheme check written as `scheme == "file"` silently excludes uring stores.
 Config comes from environment variables or the `storage_options` map passed to
 `lance.dataset` / `lance.write_dataset`.
 
@@ -100,8 +106,19 @@ method is called, so the retry skipped the failed part and completion reported `
 Retries now happen inside the HTTP connector, preserving part identity, for native S3/Azure/GCS;
 "OpenDAL stores retain their existing behavior and are outside this repair." The
 `LANCE_CONN_RESET_RETRIES` env var (default 20) was removed along with the old writer-level
-resubmission path - it is the **only** `LANCE_*` variable to change in the v11 range, and no new
-ones were added.
+resubmission path.
+
+**`LANCE_*` changes in the v11 range.** One removal (`LANCE_CONN_RESET_RETRIES`, above) and two
+additions, both from the AMX-FP16 work in `beta.16` (PR #8540):
+
+| Variable | Scope | Effect |
+|----------|-------|--------|
+| `LANCE_DISABLE_AMX` | runtime | Kill switch for the AMX-FP16 paths. Also reverts IVF partition assignment to the approximate path, so an index built with it set is **not** equivalent to one built without it |
+| `LANCE_AMX_FP16_CC` | build time | Overrides the compiler used to build the AMX kernel (`rust/lance-linalg/build.rs:27`); the kernel needs clang >= 16 or gcc >= 13 |
+
+Grep trap: `LANCE_AMX_CFG_SEARCH`, `LANCE_AMX_CFG_GEMM`, and `LANCE_AMX_TILE_COUNT` look like
+env vars in a tree-wide `LANCE_[A-Z_]*` grep but are **C preprocessor macros** in
+`rust/lance-linalg/src/simd/amx_fp16.c:107-137`. They are not readable from the environment.
 
 **Base-aware access (v7).** `Dataset::object_store` takes an `Option<u32>` base id - `None`
 for the primary store, `Some(base_id)` for an additional base. Caching/instrumentation
@@ -151,7 +168,7 @@ Disable globally with `LANCE_USE_VERSION_HINT=0`.
 
 ## 15. Capability matrix
 
-What Lance can and cannot do at `v11.0.0-beta.6`.
+What Lance can and cannot do at `v11.0.0-beta.16`.
 
 **Storage and format**
 
@@ -232,7 +249,7 @@ registered `fts` table function (`ctx.register_udtf("fts", ...)`,
 
 ## 16. Source map
 
-Where to look in `lance-format/lance` at `v11.0.0-beta.6`.
+Where to look in `lance-format/lance` at `v11.0.0-beta.16`.
 
 | Topic | Path |
 |-------|------|
@@ -242,9 +259,10 @@ Where to look in `lance-format/lance` at `v11.0.0-beta.6`.
 | Index spec | `docs/src/format/index/{index.md,vector/,scalar/,system/}` (scalar incl. `scalar/fmindex.md`) |
 | User guide | `docs/src/guide/{blob,data_evolution,data_types,json,object_store,read_and_write,performance,tags_and_branches,tokenizer,distributed_write,distributed_indexing,migration}.md` |
 | Integrations | `docs/src/integrations/{index,datafusion,pytorch,tensorflow}.md` |
-| Protobuf schemas | `protos/{file2,table,transaction,rowids,index,index_old,ann,filtered_read,table_identifier}.proto` (`index_old.proto` is a v9 forward-compat shim) |
+| Protobuf schemas | All 12: `protos/{file,file2,table,transaction,rowids,index,index_old,ann,filtered_read,table_identifier,encodings_v2_0,encodings_v2_1}.proto` (`index_old.proto` is a v9 forward-compat shim; `file.proto` is the legacy v1 container; the two `encodings_v2_*` files hold the per-version encoding messages) |
 | Rust workspace | `rust/` (entry point `rust/lance/`) |
 | Commit / OCC | `rust/lance/src/io/commit.rs`, `rust/lance-table/src/io/commit.rs` |
+| Transactions | `rust/lance-table/src/transaction/` (moved out of `rust/lance/src/dataset/transaction.rs` in v11 by #8053/#8054/#8056; `lance::dataset::transaction` survives as a re-export shim) |
 | MemWAL | `rust/lance/src/dataset/mem_wal/` |
 | Indexes | `rust/lance-index/src/` |
 | Object store | `rust/lance-io/src/object_store/` |
@@ -253,6 +271,14 @@ Where to look in `lance-format/lance` at `v11.0.0-beta.6`.
 | Data overlay resolution | `rust/lance/src/dataset/overlay.rs` |
 | Release train / breaking detection | `ci/publish_beta.sh`, `ci/check_breaking_changes.py` |
 
+**`TableIdentifier` (`protos/table_identifier.proto`)** is how a table is handed to a remote
+executor for distributed read/write, and it has two modes the filename alone does not reveal:
+"1. uri + serialized_manifest (fast): remote executor skips manifest read. 2. uri + version +
+etag (lightweight): remote executor loads manifest from storage" (`:10-11`). Mode 1 trades
+message size for a saved round trip - the right default when the manifest is already in hand
+and the executor count is modest; mode 2 keeps the message small when fanning out widely, at
+one manifest read per executor.
+
 Auto-generated API docs and the language-agnostic namespace spec live in sibling repos under
-`github.com/lance-format`. To refresh this reference, see the maintenance note in
-`../SKILL.md`.
+`github.com/lance-format`. The canonical docs site is `lance.org`. To refresh this reference,
+see the maintenance note in `../SKILL.md`.

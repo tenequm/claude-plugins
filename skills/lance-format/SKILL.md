@@ -2,8 +2,8 @@
 name: lance-format
 description: Deep reference for Lance v11 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace plus pylance. Covers the 2.x file format and structural encodings, the table format (manifests, fragments, transactions, OCC), vector / scalar / full-text indexes, MemWAL, schema evolution, time travel, namespaces, and object-store config. Use when building directly on the Lance crates or reading `.lance` datasets; this is the Lance format and engine (`lance-format/lance`), not the LanceDB product built on top of it.
 metadata:
-  version: "0.15.0"
-  upstream: "lance-format/lance@v11.0.0-beta.6"
+  version: "0.16.0"
+  upstream: "lance-format/lance@v11.0.0-beta.16"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/lance-format
     emoji: "🗄️"
@@ -17,7 +17,7 @@ specs: a **file format**, a **table format**, **index formats**, **catalog specs
 **namespace client spec**. The Rust workspace at `lance-format/lance` implements all of them
 plus Python (`pylance`) and Java bindings.
 
-This skill tracks **`v11.0.0-beta.6`** (the `lance-format/lance` git tag), the current
+This skill tracks **`v11.0.0-beta.16`** (the `lance-format/lance` git tag), the current
 development frontier; **`v10.0.0`** is the stable pin. Pin against tags, not `main` - Lance ships
 beta tags every few days and `next`-format encodings can change. Version landscape below.
 
@@ -60,7 +60,10 @@ These are two different things and conflating them produces wrong answers.
 writes (`lance-flink`), PostgreSQL reads via `pglance`, a Cypher graph engine (`lance-graph`), a
 dataset browser (`lance-data-viewer`), agentic context management (`lance-context`), and
 namespace catalog implementations for Hive, Polaris, Gravitino, Unity Catalog, and AWS Glue.
-Generated per-language SDK docs live at `lance-format.github.io/lance-{python,java}-doc`.
+The canonical docs site is **`lance.org`**. Generated per-language SDK docs live at
+`lance-format.github.io/lance-python-doc` for Python and
+[javadoc.io](https://www.javadoc.io/doc/org.lance/lance-core/latest/index.html) for Java - the
+matching `lance-format.github.io/lance-java-doc` path 404s.
 
 If you are linking the `lance` crate in `Cargo.toml`, you are using Lance directly - use this
 skill. If a question is about LanceDB internals, the storage layer underneath it is still
@@ -78,6 +81,15 @@ table with roles, versions, and every workspace dep in `references/format-file.m
 `lance-encoding::version` with no re-export (`LanceFileVersion` and `ConcreteFileVersion` both
 live in `lance-file::version` now), removed `lance_io::encodings` and the `previous` namespaces,
 and gave each current format its own `versions/v2_{0,1,2,3}` module. Section 2.1.
+
+Since `beta.6`, the transaction code moved too (#8053/#8054/#8056):
+`rust/lance/src/dataset/transaction.rs` is **deleted**, replaced by a
+`rust/lance-table/src/transaction/` module tree (`builder`, `conflicts`, `operation`, `proto`,
+`manifest_build`, `validate`, `index_maintenance`, `row_version`, `update_map`). A
+`lance::dataset::transaction` re-export shim survives and still carries `Operation`,
+`Transaction`, `TransactionBuilder`, `RewriteGroup`, `UpdateMap` and friends, so the common
+surface is unbroken - but anything importing a symbol the shim omits, or citing the old path,
+needs retargeting.
 
 ## File format versions
 
@@ -116,7 +128,7 @@ unofficial.
 
 | Major | Its breaking theme |
 |-------|--------------------|
-| **v11** (current, `v11.0.0-beta.6`) | Fragment ids became a dataset-lifetime high-water mark; large internal reorganization of `lance-file` / `lance-encoding`; the first new manifest feature flag since v7. Delta below |
+| **v11** (current, `v11.0.0-beta.16`) | Fragment ids became a dataset-lifetime high-water mark; large internal reorganization of `lance-file` / `lance-encoding`; the first new manifest feature flag since v7. Delta below |
 | **v10** | Blob APIs preserve null selections; cache keys became opaque BLAKE3 digests (every warm or persisted cache cold-misses, no legacy fallback); async `create_remapper`; MemWAL renamed generation -> SSTable, merge -> compaction (wire-compatible, symbol-breaking) |
 | **v9.1** (never released; renamed into v10) | FTS/inverted creation took a `block_size` param. Net-new: Data Overlay Files (cell-level updates without base-file rewrite, unstable + env-gated), sparse structural pages, `lance-index-core` |
 | **v9** | Python 3.9 dropped; `alter_columns` fails fast when casting an indexed column; FM-Index proto rename made existing FM indexes unreadable; FTS/inverted defaults to on-disk format v2 |
@@ -133,10 +145,15 @@ Full per-tag deltas, with every PR citation: `references/changelog-v7-v11.md`.
 
 ## The v11 delta
 
-222 commits from `v10.0.0-beta.7`, with **13 `breaking-change`-labeled PRs**. Most structural
+313 commits from `v10.0.0-beta.7`, with **14 `breaking-change`-labeled PRs**. Most structural
 invariants held: **26 crates**, **16 transaction ops**, `CommitConfig.num_retries` **20**,
 file-format enum still `next => 2.3` / default 2.1 (no 2.4), arrow 58 / datafusion 54, MSRV
-1.91.0, Edition 2024, Python 3.10+, and **no new `LANCE_*` env vars**.
+1.91.0, Edition 2024, Python 3.10+.
+
+**Two `LANCE_*` env vars did land** (both from the AMX work, #8540): `LANCE_DISABLE_AMX`, a
+runtime kill switch, and `LANCE_AMX_FP16_CC`, a build-time compiler override. Note that
+`LANCE_AMX_CFG_*` and `LANCE_AMX_TILE_COUNT` are **C macros in `amx_fp16.c`, not env vars** -
+a plain `LANCE_*` grep over the tree reports them as if they were. Performance section below.
 
 **The manifest feature flags did change** - the first new bit since v7.
 `FLAG_MEM_WAL_INDEX_CATCHUP = 128` was added and `FLAG_UNKNOWN` moved 128 -> 256. Both reader
@@ -200,8 +217,7 @@ index-only query could answer without the SSTables holding the newest rows. Sect
   contributes to `_score`**; exact-null zone maps over every type (#8088, #8017); pluggable cache
   backends (#7683); the `aws_provider_scheme` storage option (#8103); `goosefs://` on
   `ConditionalPutCommitHandler` (#8134 - if-not-exists only holds once *every* writer is
-  upgraded); multipart uploads keeping part identity across retries (#8174). **No new `LANCE_*`
-  env vars landed in v11.**
+  upgraded); multipart uploads keeping part identity across retries (#8174).
 - **MemWAL catch-up is now derived, not declared** (#8481, superseding #8263) - a commit no
   longer carries a claim about index coverage; coverage is derived from the version the
   transaction read. #8263's `IndexCatchupAdvance` proto message was added and then removed
@@ -223,6 +239,50 @@ with the conditions that trigger each, is in `references/changelog-v7-v11.md`.
 
 Full delta including the Python/Java surface: `references/changelog-v7-v11.md`.
 
+### Since `beta.6` (91 commits, beta.7 -> beta.16)
+
+One newly `breaking-change`-labeled PR, **#8235**: compaction gained `max_source_rows` and
+`max_source_bytes` alongside the existing `max_source_fragments`, each also settable as a
+`lance.compaction.*` table-config key. #8532 added `excluded_fragment_ids` to keep named
+fragments out of planning entirely.
+
+**Net-new:**
+
+- **AMX-FP16 acceleration for IVF** (#8540) - see Performance below. It ships the only two new
+  `LANCE_*` env vars in the whole v11 line.
+- **Lightweight version references** (#8523) - `Dataset::version_refs()` returns `VersionRef`s by
+  listing manifest locations, without reading and deserializing every manifest the way
+  `versions()` does. Use `latest_version` when only the current branch tip is needed. Section 8.
+- **`Dataset::migrate_to_stable_row_ids`** (#8521) - in-place migration of a legacy dataset onto
+  stable row IDs. Section 8.
+- **`FileFragment::write_columns`** (#8313, renamed by #8622) - per-fragment column writes that
+  survive compaction.
+- **MemWAL shard pruning** - the planner evaluates predicates against shard fields and skips
+  shards whose computed shard values cannot match. Section 10.
+- Format surface the skill previously never named: `VersionAuxData` (on-demand key/value metadata
+  attached to a version, `table.proto`), `IndexSection` (the per-version index-metadata container
+  the manifest points at), and `TableIdentifier`'s two remote-reconstruction modes -
+  `uri + serialized_manifest` (fast, the remote executor skips the manifest read) versus
+  `uri + version + etag` (lightweight, it loads the manifest from storage). Sections 5 and 16.
+- `lance-datafusion` parses **Substrait** filter and aggregate expressions
+  (`parse_substrait`), and `index.proto` carries a **`DiskAnn`** persisted stage. Sections 12, 11.
+
+**The external-manifest-store protocol changed** (#8499) - object storage is now authoritative.
+The external store's put-if-not-exists is a *reservation* that selects one immutable staging
+object; the commit point is the successful copy to the deterministic `{version}.manifest` path.
+A stored ETag must be **ignored, not trusted** - concurrent finalizers can copy identical bytes
+into different physical generations, so a retained ETag makes later readers reject a perfectly
+good manifest with `Manifest e_tag mismatch`. Legacy rows converge with no migration, but the
+stale-ETag race can still fire while legacy *finalizers* remain in the fleet. Section 9.
+
+The correctness fixes in this window split into **heals-on-upgrade** (most of them - read-path
+only) and **requires rewriting or repairing data on disk**: #8382 (variable-width offsets),
+#8669 (JSON columns updated from string expressions), #8509 (re-run affected merges), #7703 and
+#8539 (bad manifests already committed - validation is commit-time only), #8459 (a clobbered tag
+is unrecoverable and undetectable), #8378 (data "written to a UNC URL" landed on the local
+drive), #8482 (re-run the distributed FTS build). Full conditions in
+`references/changelog-v7-v11.md`.
+
 ## Performance questions
 
 For anything performance-shaped - slow scans or searches, remote/object-storage cost, index
@@ -235,6 +295,19 @@ v11 added an official **"Tuning remote scans"** section giving a concrete starti
 (`LANCE_IO_THREADS=8`, `fragment_readahead=1`, `batch_readahead=2`, `io_buffer_size=64MB`) for
 cross-region or public-internet access, where the cloud default of 64 concurrent requests is too
 aggressive; treat it as a legitimate second move once call volume is already minimized.
+
+**AMX-FP16** (#8540, beta.16) is the one v11 performance change that alters *results*, not just
+speed: where it engages, IVF partition assignment becomes **exact instead of approximate**, so
+recall improves *and* assignments differ from an older build. It is shape-gated (`float16` +
+`dot`, `dimension >= 32`, `num_centroids >= 32`); everything else keeps the previous path.
+`LANCE_DISABLE_AMX=1` disables it, but reverts assignment to the approximate path too - so an
+index built with it set is not equivalent to one built without it.
+
+Two cache facts to know before tuning anything remote: Lance has **no resident data cache** (a
+`Session` holds only index and metadata caches, never decoded values, so repeated point reads
+re-pay object-store IO), and one `Arc<Session>` shared via `DatasetBuilder::with_session` lets
+datasets share it. Cold first search is dominated by paging indexes in - `prewarm_index` is the
+remedy. All of this, with the build-time requirements, in `references/performance.md`.
 
 ## Official docs mirror
 

@@ -1,8 +1,8 @@
 # Lance v11 reference - table format (sections 5-10)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.6`). Citations are `path:line`
+Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -72,6 +72,14 @@ Key fields: `fields` (the schema, all fields including nested), `fragments` (the
 `base_paths`, `branch` (optional; absent = main), `next_row_id` (only with stable row IDs),
 `reader_feature_flags` / `writer_feature_flags`, `transaction_file`.
 
+Two manifest-adjacent messages worth naming explicitly. **`IndexSection`** is what
+`index_section` points at - "a list of index metadata for one dataset version"
+(`protos/table.proto:311-314`), so index metadata is versioned with the table rather than
+living beside it. **`VersionAuxData`** (`:236-241`) attaches arbitrary key/value metadata to a
+version and is explicitly "Only load on-demand", i.e. it is *not* paid for on every dataset
+open the way `config` and `table_metadata` are - the right place for per-version annotations
+that most readers never need.
+
 **Manifest naming** has two schemes (`transaction.md:24-32`): **V1** = `{version}.manifest`;
 **V2** = `{u64::MAX - version:020}.manifest` (20-digit, reverse-sorted, so the latest version
 sorts first lexicographically - enables O(1) latest-version discovery on ordered stores).
@@ -94,7 +102,7 @@ mechanism behind zero-copy schema evolution.
 an overwrite restarted ids at 0; now the first fragment an overwrite writes takes the next id
 after the dataset's highest ever used, because "an id must never name two different sets of
 rows, or per-fragment state keyed by id (caches, deletion files, row addresses) can be
-attributed to the wrong rows" (`rust/lance/src/dataset/transaction.rs:1866-1869`). Three
+attributed to the wrong rows" (`rust/lance-table/src/transaction/manifest_build.rs:538`). Three
 consequences:
 
 - Code that assumes a known id after an overwrite (`dataset.get_fragment(0)`) breaks - read ids
@@ -102,7 +110,7 @@ consequences:
 - An overwrite fragment carrying a deletion file is now **rejected**: "Overwrite fragments must
   be newly written, but fragment {} carries deletion file {}. Use Delete to commit deletions
   against existing fragments, or Merge to change their schema"
-  (`rust/lance/src/dataset/transaction.rs:4057`). The reason is structural - a deletion file
+  (`rust/lance-table/src/transaction/validate.rs:109`). The reason is structural - a deletion file
   cannot follow its fragment to a new id, because its path embeds the old one
   (`_deletions/{fragment_id}-{read_version}-{id}`).
 - **Any** commit producing duplicate ids is rejected (`check_fragment_ids`,
@@ -186,6 +194,13 @@ Nested fields link via `parent_id` (`-1` for top-level).
 
 Schema changes are **metadata-only** wherever possible (`docs/src/guide/data_evolution.md`):
 
+**Per-fragment column writes (v11, #8313; renamed to `write_columns` by #8622).**
+`FileFragment::write_columns` writes new column data for a *single* fragment and the result
+survives compaction, so a distributed backfill can have each worker materialize its own
+fragment's columns independently instead of funneling through one whole-dataset pass. The
+API is new enough that it had not appeared in a release tag when it was renamed - pin exactly
+if you build on it.
+
 - **Add column** - assign a new field ID, update the schema. Schema-only add is very fast.
   File format <=2.1 cannot add sub-columns under an existing struct; 2.2 can extend nested
   struct fields (including structs nested in lists). Since v9, adding an **all-null `Map`
@@ -223,6 +238,16 @@ source rows that match the same target** is to **fail the operation**
 to keep the first and skip later duplicates. Empty `on` keys fall back to the schema's
 unenforced primary key.
 
+**That failure is deterministic, and it is not a conflict - do not let an OCC retry loop eat
+it.** The error reads "Ambiguous merge inserts are prohibited: multiple source rows match the
+same target row on ({})" (`merge_insert.rs:292`) and is raised as `Invalid user input`, i.e. it
+describes the *source batch*, not the state of the table. Retrying it re-runs the same
+comparison against the same input and fails identically every time, so a generic
+"retry the Lance operation on error" wrapper turns one clear error into N attempts and a
+misleading exhausted-retries message. Match on the error class at the Lance boundary and retry
+only genuine commit conflicts; fix ambiguous input by deduping the source or selecting
+`SourceDedupeBehavior::FirstSeen`.
+
 **The third clause: `when_not_matched_by_source_*`.** Beyond "row in both" (`when_matched`) and
 "row only in source" (`when_not_matched`), merge-insert can act on **target rows the source did
 not mention**. `when_not_matched_by_source_delete()` removes them, and the predicate form
@@ -242,6 +267,15 @@ number; all versions form a serializable history enabling time travel
 (`docs/src/format/table/transaction.md:5-7`). Writes (append, overwrite, index ops,
 compaction) create versions; **creating or deleting tags or branches does not**. Time travel
 is `checkout_version` by version number, tag name, or `(branch, version)` tuple.
+
+**Listing versions cheaply (v11, #8523).** `versions()` reads and deserializes *every* manifest,
+which is why it is expensive on a long-lived dataset over object storage. `version_refs()`
+returns `VersionRef`s by listing manifest locations only - use it whenever you need version
+numbers rather than full metadata (`rust/lance/src/dataset.rs:259,2644`; Python
+`dataset.version_refs()`). When only the current branch tip matters, `latest_version` is
+cheaper still. `get_fragment` also became a binary search over the manifest at `beta.16`
+(#8636), with a check-and-fall-back-to-linear-scan guard for legacy manifests whose fragment
+lists are unsorted (Lance <= 0.10) or contain duplicate ids (Lance <= 0.16).
 
 ### Feature flags
 
@@ -319,8 +353,17 @@ A row has two identifier forms (`docs/src/format/table/row_id_lineage.md`):
   auto-incrementing u64 (exposed as `_rowid`) that stays constant for the row's lifetime even
   as physical location changes.
 
-**Stable row IDs** must be enabled at dataset creation (manifest flag bit 2) - they cannot be
-turned on later. Assignment uses a monotonic `next_row_id` counter in the manifest; on a
+**Stable row IDs** are normally enabled at dataset creation (manifest flag bit 2). Since
+`v11.0.0-beta.15` (#8521) an existing dataset can also be migrated in place with
+`Dataset::migrate_to_stable_row_ids`, which supersedes the older "cannot be turned on later"
+rule. It is one `Merge` commit that assigns row-id sequences to every fragment and flips the
+feature flag atomically; because `Merge` conflicts with all data-modifying operations, "a
+successful commit guarantees no concurrent write occurred". Two operational catches:
+**no retries are attempted** (`with_max_retries(0)`), so quiesce concurrent writers first and
+retry yourself on conflict; and it is idempotent, returning `Ok(())` immediately if the table
+already uses stable row IDs (`rust/lance/src/dataset.rs:3216`).
+
+Assignment uses a monotonic `next_row_id` counter in the manifest; on a
 commit conflict the writer rebases by re-reading the latest counter. On update, Lance writes a
 new physical row, keeps the same `_rowid`, marks the old physical row deleted, and the row-id
 index maps `_rowid -> (new fragment, new offset)`.
@@ -507,10 +550,44 @@ now bounds it (`rust/lance-core/src/utils/backoff.rs:87`, PR #7883); attempts 0-
 unchanged, and because "the cap is proportional to `unit`, not absolute, a slow first attempt
 can still produce a multi-minute single sleep". External-manifest finalization now always HEADs
 the destination after copy: it previously reused staging object metadata for manifests under
-5 MiB, which could reject valid tables as corrupt (PR #7964). Two correctness fixes:
+5 MiB, which could reject valid tables as corrupt (PR #7964). **Superseded at v11.0.0-beta.8 by
+PR #8499** - the HEAD still happens, but its ETag is now returned to the caller as an opaque
+physical-generation observation and deliberately *not* persisted; see the protocol change
+below. Two correctness fixes:
 `Dataset::filter_deleted_ids` returned wrong results on stable-row-id datasets, breaking
 `optimize_indices` with `batch.num_rows() != chunk.len()` (PR #7704), and `filter_addr_or_ids`
 now errors on mismatched input lengths instead of silently truncating.
+
+**v11 (beta.8): object storage became authoritative for external manifest stores (PR #8499).**
+The external store is now described as "the concurrency coordinator and fast version index",
+not the commit itself. The protocol re-labels its steps:
+
+1. Stage the manifest under `{dataset}/_versions/{version}.manifest-{uuid}`.
+2. **Reserve** the version in the external store with put-if-not-exists. This "selects one
+   immutable staging object; it is not yet the canonical commit" - the previous wording called
+   this step the commit.
+3. Copy staging -> `{dataset}/_versions/{version}.manifest`. "Successful materialization at
+   this deterministic path is the commit point."
+4. Update the external-store pointer to the finalized path.
+
+The load-bearing rule is about the ETag: **"Do not persist that ETag in the external store."**
+Concurrent finalizers can copy the *same* selected immutable bytes into different physical
+generations, and COPY plus external-store publication is not atomic, so a retained ETag makes
+later readers reject a perfectly good canonical manifest with `Manifest e_tag mismatch` - a
+dataset that reads as broken while its bytes are fine. Every helper therefore publishes the
+same stable path-and-size tuple, and readers "ignore any legacy stored ETag because it is
+neither content identity nor dataset-incarnation identity", validating **size** instead. The
+HEAD's ETag is still handed to the current caller, purely so runtime caches do not collapse a
+newly committed `Dataset` into an older cached one at the same URI and version.
+
+Fault tolerance was re-cut along the same seam: a failure between steps 2 and 3 leaves a
+pending reservation that readers retry; a failure between 3 and 4 leaves the canonical object
+**committed** (readers use it and may repair the index); staging deletion is garbage collection
+and never affects the commit outcome. Rollout needs no migration or quiesced cutover - new
+readers ignore legacy stored ETags and legacy readers already accept finalized rows without
+one - but while legacy *finalizers* remain in the fleet the pre-existing race can still
+republish a stale ETag that a legacy reader rejects. Full protocol:
+`references/docs/format/table/transaction.md`.
 
 ### 9.4 Cache keys and backend (v10, BREAKING)
 
@@ -588,6 +665,11 @@ contract; in-memory buffering and scheduling are implementation-defined.
 - **Shard** - the unit of write scale-out; exactly one active writer per shard. For
   primary-key tables, all rows of a PK must map to one shard (otherwise inter-shard compaction
   order can resurrect stale rows). Append-only MemWAL tables may omit the primary key.
+  Sharding is also a **read** optimization, not only a write one: "When sharding specs are
+  available, the planner evaluates query predicates against shard fields and skips shards whose
+  computed shard values cannot match" (`mem_wal.md:586-588`). A predicate over the shard field
+  therefore prunes whole shards before any data is touched - so choosing shard fields that
+  appear in common filters buys read selectivity, not just write parallelism.
 - **MemTable** - holds rows before flush; a list of Arrow record batches. **A MemTable does not
   have a generation** - generation numbers belong to SSTables. `current_generation` in the shard
   manifest "is the generation number to assign to the next SSTable created by flushing the

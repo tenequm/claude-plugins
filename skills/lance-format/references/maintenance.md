@@ -1,7 +1,7 @@
 # Maintaining this skill
 
 Citations across the reference files are `path:line` relative to the `lance-format/lance` repo;
-build a permalink as `https://github.com/lance-format/lance/blob/v11.0.0-beta.6/<path>`. Line
+build a permalink as `https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line
 numbers drift between tags - treat them as approximate.
 
 To refresh: `git -C <your lance-format/lance clone> fetch --tags`, check out the newest tag
@@ -16,9 +16,14 @@ current major, and do not assume the previous major ever got a final), then:
    from upstream bytes are expected and enforced by this repo's pre-commit hooks, not drift:
    trailing whitespace is stripped from every file; `end-of-file-fixer` removes the trailing
    blank line that `format/table/layout.md` and `format/table/row_id_lineage.md` carry upstream;
-   and the same hook *adds* a trailing newline to
-   `format/index/indices-fragment handling.drawio.svg` (mirror 21857 bytes vs upstream 21856).
-   Normalize all three before diffing the mirror against a new tag.
+   and the same hook *adds* a trailing newline to **all four** `.drawio.svg` diagrams, each of
+   which is therefore one byte larger in the mirror than upstream (`indices-compaction`
+   51381 -> 51382, `scalar_index` 8210 -> 8211, `starter-example` 14622 -> 14623,
+   `indices-fragment handling` 21856 -> 21857).
+   Normalize all three before diffing the mirror against a new tag. In practice both
+   normalizations reduce to: strip trailing whitespace from every line, then force exactly one
+   trailing newline on every file - applying that to a fresh `git archive` of `docs/src`
+   reproduces the committed mirror byte-for-byte.
 2. Re-check Part A of `references/performance.md` against the new `guide/performance.md` and the
    other perf-bearing sections it routes to. Part A deliberately does **not** copy that text -
    it points at `references/docs/`, so a mirror refresh updates it automatically; what needs
