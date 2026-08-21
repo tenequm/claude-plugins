@@ -104,7 +104,9 @@ def publish_clawhub(args: argparse.Namespace, repo_root: Path) -> int:
             run(command, repo_root)
         except subprocess.CalledProcessError as exc:
             error = exc.stderr.strip() or exc.stdout.strip() or str(exc)
-            if "Version already exists" in error:
+            # Registry message is "Version <x.y.z> already exists.", so match
+            # the stable suffix rather than a literal that never occurs.
+            if "already exists" in error:
                 print("  Already published, skipping.", flush=True)
                 successes.append(
                     {
