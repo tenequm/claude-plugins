@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -14,8 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from zipfile import ZIP_DEFLATED, ZipFile
 
-import yaml
-from generate_readme import clawhub_slug
+from generate_readme import clawhub_slug, parse_frontmatter
 
 SOURCE_REPO = "tenequm/skills"
 SOURCE_REF = "refs/heads/main"
@@ -88,28 +86,6 @@ def resolve_commit(repo_root: Path, ref: str) -> str:
     if result.returncode != 0:
         raise SystemExit(f"error: could not resolve git ref {ref!r}")
     return result.stdout.strip()
-
-
-def parse_frontmatter(text: str) -> dict[str, str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    if not match:
-        return {}
-    parsed = yaml.safe_load(match.group(1)) or {}
-    if not isinstance(parsed, dict):
-        return {}
-
-    values: dict[str, str] = {}
-    name = parsed.get("name")
-    if isinstance(name, str):
-        values["name"] = name.strip()
-
-    metadata = parsed.get("metadata")
-    if isinstance(metadata, dict):
-        version = metadata.get("version")
-        if isinstance(version, str):
-            values["version"] = version.strip()
-
-    return values
 
 
 def read_text(path: Path) -> str:
