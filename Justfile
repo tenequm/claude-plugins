@@ -26,11 +26,9 @@ check-skills:
 readme:
     uv run python scripts/generate_readme.py
 
-[private]
-readme-check:
-    uv run python scripts/generate_readme.py --check
-
-check: sync lint-repo lint-python typecheck-python check-skills readme
+# `readme` runs first so the pre-commit hooks in `lint-repo` verify a synced
+# README instead of failing on drift this recipe is about to fix.
+check: sync readme lint-repo lint-python typecheck-python check-skills
 
 release-prepare before after github_output='':
     if [[ -n "{{github_output}}" ]]; then extra_args=(--github-output "{{github_output}}"); else extra_args=(); fi; \
