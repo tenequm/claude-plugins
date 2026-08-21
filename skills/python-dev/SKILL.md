@@ -2,7 +2,9 @@
 name: python-dev
 description: Opinionated Python development setup with uv, ty, ruff, pytest, and just. Use when creating a new Python project, writing or fixing pyproject.toml, or configuring linting, formatting, type checking, testing, pre-commit hooks, or build and CI tooling.
 metadata:
-  version: "0.2.4"
+  version: "0.2.5"
+  categories: "development"
+  topics: "python, uv, ruff, pytest, just"
   upstream: "uv@0.11.8, ty@0.0.33, ruff@0.15.12, ruff-pre-commit@0.15.12, pytest@9.0.3, pytest-asyncio@1.3.0, pre-commit@4.6.0, pre-commit-hooks@6.0.0"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/python-dev

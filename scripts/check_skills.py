@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+from generate_readme import clawhub_slug
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -69,21 +73,48 @@ OPENCLAW_METADATA_FIELDS = {
     "skillKey",
 }
 HOMEPAGE_BASE = "https://github.com/tenequm/skills/tree/main/skills/"
-# NVIDIA skill-card minimum template (docs.nvidia.com/skills/skill-cards).
-SKILL_CARD_SECTIONS = (
-    "Description",
-    "Owner",
-    "License/Terms of Use",
-    "Use Case",
-    "Deployment Geography for Use",
-    "Requirements / Dependencies",
-    "Known Risks and Mitigations",
-    "References",
-    "Skill Output",
-    "Skill Version",
-    "Ethical Considerations",
-)
-SKILL_CARD_HEADING_RE = re.compile(r"^#{1,3}\s+(.+?)\s*$", re.MULTILINE)
+# ClawHub browse taxonomy (docs/publishing.md#skill-catalog-metadata). Categories
+# and topics are registry state, not part of any skill spec: they only reach
+# ClawHub through the `skill publish` flags the release pipeline builds from
+# these fields, so they stay flat strings under `metadata`.
+CLAWHUB_CATEGORY_SLUGS = {
+    "integrations",
+    "automation",
+    "research",
+    "development",
+    "productivity",
+    "communication",
+    "creative",
+    "knowledge",
+    "agents",
+    "operations",
+    "security",
+    "finance",
+    "lifestyle",
+    "other",
+}
+MAX_CLAWHUB_CATEGORIES = 3
+MAX_CLAWHUB_TOPICS = 5
+MAX_CLAWHUB_TOPIC_LENGTH = 48
+RESERVED_CLAWHUB_TOPICS = {
+    "approved",
+    "audited",
+    "certified",
+    "clawhub",
+    "community",
+    "curated",
+    "endorsed",
+    "featured",
+    "official",
+    "officials",
+    "openclaw",
+    "recommended",
+    "staff-pick",
+    "trusted",
+    "trusted-publisher",
+    "verified",
+}
+TOPIC_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 # Claude Code dynamic-injection trigger: `!` at line start or after whitespace,
 # directly touching a backtick. The loader is not markdown-aware, so a doc
@@ -235,41 +266,88 @@ def lint_openclaw_metadata(
         issues.append(LintIssue(skill_md, "`metadata.openclaw.emoji` must be a non-empty string."))
 
 
-def lint_skill_card(card_path: Path, version: str | None, issues: list[LintIssue]) -> None:
-    skill_md = card_path.parent / "SKILL.md"
-    if not card_path.exists():
-        issues.append(
-            LintIssue(
-                skill_md,
-                "missing required `skill-card.md` (NVIDIA skill-card release record).",
-            )
-        )
-        return
+def split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
-    text = card_path.read_text(encoding="utf-8")
-    headings = {match.group(1).strip() for match in SKILL_CARD_HEADING_RE.finditer(text)}
-    missing = [section for section in SKILL_CARD_SECTIONS if section not in headings]
-    if missing:
-        issues.append(
-            LintIssue(
-                card_path,
-                "missing required NVIDIA skill-card sections: "
-                + ", ".join(f"`{section}`" for section in missing),
-            )
-        )
 
-    if version is not None:
-        version_match = re.search(
-            r"^#{2,3}\s+Skill Version\s*\n+(.*?)(?=^#{1,3}\s|\Z)",
-            text,
-            re.MULTILINE | re.DOTALL,
+def lint_catalog_metadata(
+    metadata: dict[str, Any], skill_md: Path, issues: list[LintIssue]
+) -> None:
+    """Validate the ClawHub browse taxonomy the release pipeline publishes.
+
+    A skill published without categories is stored as `other` and only ever
+    appears under the Other filter, so categories are required here rather than
+    optional.
+    """
+    categories = metadata.get("categories")
+    if categories is None:
+        issues.append(
+            LintIssue(skill_md, "missing required repo policy field `metadata.categories`.")
         )
-        if version_match and version.strip() not in version_match.group(1):
+    elif isinstance(categories, str):
+        values = split_csv(categories)
+        if not values:
+            issues.append(LintIssue(skill_md, "`metadata.categories` must not be empty."))
+        unknown = sorted(set(values) - CLAWHUB_CATEGORY_SLUGS)
+        if unknown:
             issues.append(
                 LintIssue(
-                    card_path,
-                    f"`Skill Version` section must state the frontmatter version `{version}`.",
+                    skill_md,
+                    "`metadata.categories` has slugs outside the ClawHub taxonomy: "
+                    + ", ".join(f"`{value}`" for value in unknown),
                 )
+            )
+        if len(values) != len(set(values)):
+            issues.append(LintIssue(skill_md, "`metadata.categories` must not repeat a slug."))
+        if len(values) > MAX_CLAWHUB_CATEGORIES:
+            issues.append(
+                LintIssue(
+                    skill_md,
+                    f"`metadata.categories` allows at most {MAX_CLAWHUB_CATEGORIES} slugs.",
+                )
+            )
+        if "other" in values and len(values) > 1:
+            issues.append(
+                LintIssue(
+                    skill_md,
+                    "`metadata.categories` drops `other` when a specific category is present.",
+                )
+            )
+
+    topics = metadata.get("topics")
+    if topics is None:
+        return
+    if not isinstance(topics, str):
+        return  # already reported by the flat-string check
+    values = split_csv(topics)
+    if not values:
+        issues.append(LintIssue(skill_md, "`metadata.topics` must not be empty when present."))
+    if len(values) > MAX_CLAWHUB_TOPICS:
+        issues.append(
+            LintIssue(skill_md, f"`metadata.topics` allows at most {MAX_CLAWHUB_TOPICS} topics.")
+        )
+    if len(values) != len(set(values)):
+        issues.append(LintIssue(skill_md, "`metadata.topics` must not repeat a topic."))
+    for value in values:
+        if len(value) > MAX_CLAWHUB_TOPIC_LENGTH:
+            issues.append(
+                LintIssue(
+                    skill_md,
+                    f"`metadata.topics` entry `{value}` exceeds "
+                    f"{MAX_CLAWHUB_TOPIC_LENGTH} characters.",
+                )
+            )
+        if not TOPIC_RE.fullmatch(value):
+            issues.append(
+                LintIssue(
+                    skill_md,
+                    f"`metadata.topics` entry `{value}` must be lowercase and hyphen-separated "
+                    "so it matches the form ClawHub displays.",
+                )
+            )
+        if value in RESERVED_CLAWHUB_TOPICS:
+            issues.append(
+                LintIssue(skill_md, f"`metadata.topics` entry `{value}` is reserved by ClawHub.")
             )
 
 
@@ -370,11 +448,7 @@ def lint_skill(skill_md: Path) -> LintResult:
         elif not isinstance(version, str) or not version.strip():
             issues.append(LintIssue(skill_md, "`metadata.version` must be a non-empty string."))
         lint_openclaw_metadata(metadata.get("openclaw"), skill_dir, skill_md, issues)
-        lint_skill_card(
-            skill_md.parent / "skill-card.md",
-            version if isinstance(version, str) else None,
-            issues,
-        )
+        lint_catalog_metadata(metadata, skill_md, issues)
 
     allowed_fields = STANDARD_FIELDS | OPENCLAW_EXTENSION_FIELDS | CLAUDE_CODE_FIELDS
     unknown_fields = sorted(set(frontmatter) - allowed_fields)
@@ -493,6 +567,105 @@ def validate_skills_ref(repo_root: Path) -> int:
     return 1 if failed else 0
 
 
+def publishable_files(skill_dir: Path) -> list[Path]:
+    """Files ClawHub would upload: regular files, no hidden paths, no symlinks."""
+    return sorted(
+        path
+        for path in skill_dir.rglob("*")
+        if path.is_file()
+        and not path.is_symlink()
+        and path.name != ".DS_Store"
+        and not any(part.startswith(".") for part in path.relative_to(skill_dir).parts)
+    )
+
+
+def preflight_skill(skill_dir: Path, repo_root: Path) -> list[str]:
+    frontmatter, _ = read_frontmatter(skill_dir / "SKILL.md")
+    metadata = (frontmatter or {}).get("metadata") or {}
+    slug = clawhub_slug(skill_dir.name)
+    version = metadata.get("version")
+
+    command = [
+        "clawhub",
+        "--no-input",
+        "skill",
+        "publish",
+        str(skill_dir),
+        "--slug",
+        slug,
+        "--name",
+        slug,
+        "--dry-run",
+        "--json",
+    ]
+    if isinstance(version, str) and version.strip():
+        command += ["--version", version]
+    for flag, key in (("--categories", "categories"), ("--topics", "topics")):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            command += [flag, ",".join(split_csv(value))]
+
+    result = subprocess.run(command, cwd=repo_root, text=True, capture_output=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        return [f"{skill_dir.name}: clawhub dry-run failed: {detail}"]
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return [f"{skill_dir.name}: clawhub dry-run returned non-JSON output."]
+
+    problems: list[str] = []
+    if not payload.get("ok"):
+        problems.append(f"{skill_dir.name}: clawhub dry-run reported not ok: {payload}")
+    if payload.get("slug") != slug:
+        problems.append(
+            f"{skill_dir.name}: clawhub resolved slug `{payload.get('slug')}`, expected `{slug}`."
+        )
+    if isinstance(version, str) and payload.get("version") != version:
+        problems.append(
+            f"{skill_dir.name}: clawhub would publish `{payload.get('version')}`, "
+            f"frontmatter says `{version}`."
+        )
+    expected_files = len(publishable_files(skill_dir))
+    if payload.get("fileCount") != expected_files:
+        problems.append(
+            f"{skill_dir.name}: clawhub would upload {payload.get('fileCount')} files, "
+            f"{expected_files} on disk - the CLI drops files it treats as registry-generated."
+        )
+    return problems
+
+
+def preflight_clawhub(repo_root: Path) -> int:
+    """Resolve every publish against ClawHub before a release can run.
+
+    `--dry-run` needs no token, so this always runs rather than degrading to a
+    skip when credentials are absent.
+    """
+    print("==> ClawHub publish preflight")
+    if shutil.which("clawhub") is None:
+        print(
+            "clawhub CLI not found. Install it with `npm install -g clawhub`.",
+            file=sys.stderr,
+        )
+        return 1
+
+    skill_dirs = sorted(
+        path.parent for path in (repo_root / "skills").glob("*/SKILL.md") if path.is_file()
+    )
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda path: preflight_skill(path, repo_root), skill_dirs))
+
+    problems = [problem for group in results for problem in group]
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        return 1
+
+    print(f"Resolved {len(skill_dirs)} publishes.")
+    return 0
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
 
@@ -504,7 +677,7 @@ def main() -> int:
     if code != 0:
         return code
 
-    return 0
+    return preflight_clawhub(repo_root)
 
 
 if __name__ == "__main__":

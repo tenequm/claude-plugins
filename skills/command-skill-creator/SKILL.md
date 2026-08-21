@@ -2,7 +2,9 @@
 name: command-skill-creator
 description: Creates automation command skills for Claude Code projects - imperative slash-command prompts in `.claude/skills/`, not knowledge or reference skills. Use when building a `/slash-command` that automates a multi-step workflow such as a deploy, commit, release, migration, or cross-repo operation, especially one needing phased execution with approval gates.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
+  categories: "agents, development"
+  topics: "claude-code, slash-commands, skill-authoring, agent-skills"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/command-skill-creator
     emoji: "⚙️"

@@ -13,7 +13,9 @@ README_START = "<!-- GENERATED_SKILLS_TABLE_START -->"
 README_END = "<!-- GENERATED_SKILLS_TABLE_END -->"
 DEFAULT_REPO = "tenequm/skills"
 DEFAULT_LATEST_TAG = "skills-latest"
-DEFAULT_CLAWHUB_BASE = "https://clawhub.ai/skills"
+# ClawHub has no unscoped skill URL: `/skills/<slug>` resolves as owner "skills"
+# and renders not-found. `canonicalUrl` in the registry API is owner-scoped.
+DEFAULT_CLAWHUB_BASE = "https://clawhub.ai/tenequm/skills"
 
 CLAWHUB_SLUG_OVERRIDES: dict[str, str] = {
     "erc-8004": "erc-8004-development",
@@ -55,9 +57,10 @@ def parse_frontmatter(text: str) -> dict[str, str]:
 
     metadata = parsed.get("metadata")
     if isinstance(metadata, dict):
-        version = metadata.get("version")
-        if isinstance(version, str):
-            values["version"] = version.strip()
+        for key in ("version", "categories", "topics"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                values[key] = value.strip()
 
     return values
 

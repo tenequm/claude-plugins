@@ -2,7 +2,9 @@
 name: tanstack
 description: Builds type-safe React apps with TanStack Query (data fetching, caching, mutations), Router (file-based routing, search params, loaders), and Start (SSR, server functions, middleware). Use when working with react-query, server state, file-based routing, typed search params, route loaders, SSR, or server functions in a full-stack React app.
 metadata:
-  version: "0.4.3"
+  version: "0.4.4"
+  categories: "development"
+  topics: "tanstack, react, routing, data-fetching, ssr"
   upstream: "@tanstack/react-query@5.101.2, @tanstack/react-router@1.170.16, @tanstack/react-start@1.168.26, @tanstack/zod-adapter@1.167.0, @tanstack/router-plugin@1.168.18"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/tanstack

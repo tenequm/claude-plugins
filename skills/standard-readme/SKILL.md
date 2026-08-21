@@ -6,7 +6,9 @@ description: >
   write, rewrite, improve, audit, or fix a README, or asks about README quality or
   structure - even if they never mention "standard readme" explicitly.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
+  categories: "knowledge, development"
+  topics: "readme, documentation, standard-readme, markdown, open-source"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/standard-readme
     emoji: "📖"

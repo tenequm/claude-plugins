@@ -17,6 +17,9 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import yaml
 from generate_readme import clawhub_slug
 
+SOURCE_REPO = "tenequm/skills"
+SOURCE_REF = "refs/heads/main"
+
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # pragma: allowlist secret
 
 
@@ -34,6 +37,8 @@ class SkillRelease:
     previous_version: str | None
     display_name: str | None
     changelog: str
+    categories: str | None = None
+    topics: str | None = None
     file_changes: list[str] = field(default_factory=list)
     bundle_path: str | None = None
 
@@ -45,6 +50,8 @@ class SkillRelease:
             "display_name": self.display_name or self.slug,
             "current_version": self.current_version,
             "previous_version": self.previous_version,
+            "categories": self.categories,
+            "topics": self.topics,
             "changelog": self.changelog,
             "file_changes": self.file_changes,
             "bundle_path": self.bundle_path,
@@ -288,6 +295,8 @@ def build_release(
             current_version=current_version,
             previous_version=previous_version,
             display_name=display_name,
+            categories=current_meta.get("categories"),
+            topics=current_meta.get("topics"),
             changelog="",
             file_changes=changed_skills[slug],
         )
@@ -415,6 +424,8 @@ def main() -> int:
             "before": before,
             "after": after,
             "generated_at": generated_at.isoformat(),
+            "source_repo": SOURCE_REPO,
+            "source_ref": SOURCE_REF,
         },
         "skills": [release.to_manifest() for release in releases],
     }

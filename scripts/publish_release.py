@@ -38,7 +38,9 @@ def bundle_skill(skill_dir: Path, bundle_path: Path) -> None:
 
 
 def classify_clawhub_error(message: str) -> tuple[str, bool]:
-    if "Rate limit: max 5 new skills per hour" in message:
+    # Registry message: "Rate limit: max 200 new skills per 24 hours."
+    # (convex/skills.ts NEW_SKILL_DAILY_LIMIT); only new skills are limited.
+    if "Rate limit: max" in message and "new skills" in message:
         return ("rate_limited", True)
     if "Slug is already taken" in message:
         return ("slug_taken", False)
@@ -56,12 +58,18 @@ def publish_clawhub(args: argparse.Namespace, repo_root: Path) -> int:
         print("No published skills in manifest.")
         return 0
 
+    release = manifest.get("release", {})
+    source_repo = release.get("source_repo")
+    source_commit = release.get("after")
+    source_ref = release.get("source_ref")
+
     failures: list[dict[str, object]] = []
     successes: list[dict[str, str]] = []
     for skill in skills:
         command = [
             "clawhub",
             "--no-input",
+            "skill",
             "publish",
             skill["path"],
             "--slug",
@@ -75,6 +83,22 @@ def publish_clawhub(args: argparse.Namespace, repo_root: Path) -> int:
             "--tags",
             "latest",
         ]
+        for flag, value in (
+            ("--categories", skill.get("categories")),
+            ("--topics", skill.get("topics")),
+        ):
+            if value:
+                command += [
+                    flag,
+                    ",".join(part.strip() for part in value.split(",") if part.strip()),
+                ]
+        # --source-repo and --source-commit must be passed together; they attach
+        # GitHub provenance to the published version.
+        if source_repo and source_commit:
+            command += ["--source-repo", source_repo, "--source-commit", source_commit]
+            if source_ref:
+                command += ["--source-ref", source_ref]
+            command += ["--source-path", skill["path"]]
         print("Publishing", skill["slug"], skill["current_version"], flush=True)
         try:
             run(command, repo_root)

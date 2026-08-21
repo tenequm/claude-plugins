@@ -2,7 +2,9 @@
 name: polish
 description: Pre-release code review - runs lint/type checks, launches parallel review agents (cleanliness, design, efficiency, side-effect gating) on the diff, validates findings, and fixes with approval. Use before committing, pushing, or releasing changes.
 metadata:
-  version: "2.4.2"
+  version: "2.4.3"
+  categories: "development"
+  topics: "code-review, linting, refactoring, pre-release, diff-review"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/polish
     emoji: "✨"

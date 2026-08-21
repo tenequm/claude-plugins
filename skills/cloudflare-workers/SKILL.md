@@ -2,7 +2,9 @@
 name: cloudflare-workers
 description: Rapid development with Cloudflare Workers - build and deploy serverless applications on Cloudflare's global network. Use when building APIs, full-stack web apps, edge functions, background jobs, or real-time applications. Triggers on phrases like "cloudflare workers", "wrangler", "edge computing", "serverless cloudflare", "workers bindings", or files like wrangler.toml, worker.ts, worker.js.
 metadata:
-  version: "3.1.2"
+  version: "3.1.3"
+  categories: "development, operations"
+  topics: "cloudflare, serverless, edge, workers, deployment"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/cloudflare-workers
     emoji: "☁️"

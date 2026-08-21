@@ -2,7 +2,9 @@
 name: review-github-pr
 description: Reviews a GitHub pull request end to end. Fetches the diff, runs automated checks, analyzes the changes with three parallel review agents (correctness, convention compliance, efficiency), validates every finding against the actual code, and drafts a GitHub review that posts findings as inline diff comments with a recommended action of approve, request changes, or comment only.
 metadata:
-  version: "0.4.1"
+  version: "0.4.2"
+  categories: "development, automation"
+  topics: "pull-requests, code-review, github, ci-checks, subagents"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/review-github-pr
     emoji: "🔍"

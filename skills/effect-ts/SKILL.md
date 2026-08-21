@@ -2,7 +2,9 @@
 name: effect-ts
 description: "Effect-TS development guide for TypeScript, focused on Effect v4 (the recommended default) with full v3 (stable) support for existing codebases. Use when building, debugging, reviewing, or generating Effect code across its error, concurrency, service, streaming, schema, and platform layers, or whenever code imports from 'effect', '@effect/platform', '@effect/ai', or '@effect/sql'. Includes exhaustive wrong-vs-correct API tables to prevent hallucinated Effect code."
 metadata:
-  version: "0.6.3"
+  version: "0.6.4"
+  categories: "development"
+  topics: "effect, typescript, functional-programming, concurrency, error-handling"
   upstream: "effect@4.0.0-beta.92"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/effect-ts

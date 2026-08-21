@@ -15,6 +15,13 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      # `just check` resolves every publish against ClawHub with `--dry-run`,
+      # which needs the CLI but no token.
+      - name: Install ClawHub CLI
+        run: npm install -g clawhub
       - run: just check
       - name: Ensure no uncommitted changes
         run: git diff --exit-code

@@ -2,7 +2,9 @@
 name: download-webpage-as-pdf
 description: Saves a live webpage as a high-fidelity PDF that preserves the original layout and every image, including lazy-loaded ones, using the agent-browser CLI. Use whenever the user wants to download a page as PDF, save an article, or archive a URL as a local file that looks like the browser version. Matters most on JS-heavy sites where a naive `chrome --headless --print-to-pdf` or a bare `agent-browser pdf` yields blank rectangles and broken-image placeholders.
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
+  categories: "research, automation"
+  topics: "pdf, webpage-capture, browser-automation, screenshots"
   upstream: "agent-browser@0.26.0"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/download-webpage-as-pdf

@@ -28,6 +28,13 @@ jobs:
 
       - uses: astral-sh/setup-uv@v8.1.0
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install ClawHub CLI
+        run: npm install -g clawhub
+
       - name: Validate repository
         run: just check
       - name: Ensure no uncommitted changes
@@ -41,15 +48,6 @@ jobs:
       - name: Stop when no skills changed
         if: steps.prepare.outputs.changed != 'true'
         run: echo "No skill changes detected."
-
-      - uses: actions/setup-node@v6
-        if: steps.prepare.outputs.publishable == 'true'
-        with:
-          node-version: "22"
-
-      - name: Install ClawHub CLI
-        if: steps.prepare.outputs.publishable == 'true'
-        run: npm install -g clawhub
 
       - name: Authenticate to ClawHub
         if: steps.prepare.outputs.publishable == 'true'

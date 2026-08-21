@@ -2,7 +2,9 @@
 name: rust-dev
 description: Practical day-1 guide to building applications in Rust well. Covers the mental model (ownership, errors as values, traits-not-interfaces), day-1 decisions (String vs &str, Box vs Rc vs Arc, dyn vs impl Trait, anyhow vs thiserror), idioms, anti-patterns, and a tight crate shortlist (tokio, serde, anyhow, clap, reqwest, tracing, axum, sqlx). Use when starting a Rust project, learning Rust from another language, wrestling with the borrow checker, choosing crates, structuring modules, configuring Cargo.toml/clippy/rustfmt, testing, profiling, or releasing a binary.
 metadata:
-  version: "0.4.2"
+  version: "0.4.3"
+  categories: "development"
+  topics: "rust, ownership, cargo, crates, tokio"
   upstream: "rust@1.95.0, axum@0.8.9, reqwest@0.13.3, sqlx@0.9.0, jiff@0.2.24, kache@0.9.0, dist@0.32.0, release-plz-action@0.5.131"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/rust-dev

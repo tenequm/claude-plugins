@@ -34,6 +34,30 @@ Justfile                       # Task runner (just check, just readme, etc.)
 2. Add optional `references/` for detailed docs
 3. Commit with conventional commits (`feat`, `fix`, `chore`, etc.)
 
+## ClawHub catalog metadata (required)
+
+`metadata.categories` and `metadata.topics` are flat comma-separated strings. They are
+repo-local fields: ClawHub never reads frontmatter for them, so the release pipeline
+translates them into `clawhub skill publish --categories/--topics`.
+
+```yaml
+metadata:
+  version: "0.1.3"
+  categories: "agents, productivity"
+  topics: "context, handoff, compaction"
+```
+
+- `categories` is required. A skill first published without it is stored as `other`
+  permanently until someone re-publishes or edits it on ClawHub.
+- Max 3 categories from: `integrations, automation, research, development, productivity,
+  communication, creative, knowledge, agents, operations, security, finance, lifestyle, other`.
+  `other` cannot be combined with a specific category.
+- Max 5 topics, each <= 48 chars, lowercase and hyphen-separated. ClawHub rejects 16
+  reserved names (`official`, `verified`, `featured`, `trusted`, ...); `check_skills.py`
+  rejects them first.
+- Do not add a `skill-card.md`. The ClawHub CLI strips any root `skill-card.md` before
+  upload and the registry generates its own card after the security scan.
+
 ## Per-skill upstream tracking (optional)
 
 For skills that wrap a specific tool, package, or library, two conventions track freshness:
@@ -85,24 +109,36 @@ Use `/update-skill <skill-name>` (at `.claude/skills/update-skill/`) to maintain
 
 ### Automated (CI)
 On push to `main`, `.github/workflows/release.yml`:
-1. Runs `just check` (lint, typecheck, skill validation, README sync)
+1. Runs `just check` (lint, typecheck, skill validation, ClawHub publish preflight, README sync)
 2. Diffs changed skills, builds manifest + zip bundles
 3. Publishes changed skills to ClawHub via `clawhub` CLI
 4. Creates a GitHub Release tagged `skills-<short-sha>` (first 7 chars; verify with `gh release view skills-$(git rev-parse --short HEAD)`) with bundles and notes
 
 ### Manual publishing
 ```bash
-clawhub --no-input publish skills/<folder> \
+clawhub --no-input skill publish skills/<folder> \
   --slug <clawhub-slug> --name "Display Name" \
-  --version <version> --changelog "..." --tags latest
+  --version <version> --changelog "..." --tags latest \
+  --categories "<slugs>" --topics "<topics>" \
+  --source-repo tenequm/skills --source-commit <sha> --source-path skills/<folder>
 ```
+
+### Slugs, URLs, licensing
+- Slugs are scoped per publisher, not globally unique: two owners can hold the same slug,
+  and the bare form then resolves ambiguously (`AMBIGUOUS_SKILL_SLUG`). Always link and
+  install owner-scoped: page `https://clawhub.ai/tenequm/skills/<slug>`, install
+  `@tenequm/<slug>`. There is no unscoped skill URL - `/skills/<slug>` is parsed as
+  owner `skills` and renders not-found.
+- ClawHub licenses every published skill `MIT-0` registry-wide; no per-skill override.
+  The Apache-2.0 `LICENSE.txt` still ships in the bundle for the source repo.
+- `clawhub skill rename <slug> <new-slug>` keeps the old slug as a redirect.
 
 ### ClawHub slug overrides
 Some folder names collide with existing ClawHub slugs. Overrides live in `CLAWHUB_SLUG_OVERRIDES` in `scripts/generate_readme.py` and are applied automatically by the release pipeline. When publishing manually, use the correct `--slug` value from that dict.
 
 ### Key commands
 ```bash
-just check                          # Full validation gate
+just check                          # Full validation gate (lint + agentskills validate + ClawHub dry-run preflight)
 just readme                         # Regenerate README skills table
 just release-prepare <before> <after>  # Build release manifest
 just release-publish                # Publish manifest to ClawHub + latest bundles

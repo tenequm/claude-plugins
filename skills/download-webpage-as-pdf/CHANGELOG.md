@@ -4,6 +4,16 @@ All notable changes to this skill are documented here. Format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-21
+
+### Changed
+
+- Declared ClawHub browse categories (`research, automation`) and topics in `metadata`, so the release pipeline publishes them instead of leaving the skill in the `other` category.
+
+### Removed
+
+- `skill-card.md`. The ClawHub CLI strips a root `skill-card.md` from every publish and the registry generates its own card, so the authored file never reached ClawHub.
+
 ## [0.1.6] - 2026-08-07
 
 ### Changed

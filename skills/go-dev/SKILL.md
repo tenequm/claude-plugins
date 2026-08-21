@@ -2,7 +2,9 @@
 name: go-dev
 description: Opinionated Go development setup with golangci-lint v2, gofumpt, gotestsum, golang-migrate, and just. Use when creating a new Go project, setting up linting, formatting, testing, or coverage, configuring a Go CI pipeline, writing a Justfile, wiring database migrations, or migrating from a Makefile-only workflow.
 metadata:
-  version: "0.2.3"
+  version: "0.2.4"
+  categories: "development"
+  topics: "go, golangci-lint, gofumpt, testing, just"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/go-dev
     emoji: "🐹"

@@ -4,7 +4,9 @@ description: "Thorough on-demand refresh of one skill in a skills repository: re
 argument-hint: "[skill-name]"
 disable-model-invocation: true
 metadata:
-  version: "0.8.1"
+  version: "0.8.2"
+  categories: "agents, automation"
+  topics: "skill-maintenance, versioning, changelog, research, agent-skills"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/update-skill
     emoji: "🔄"

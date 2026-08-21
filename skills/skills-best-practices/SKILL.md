@@ -2,7 +2,9 @@
 name: skills-best-practices
 description: Build high-quality Agent Skills for any agent - opinionated best practices distilled from the Agent Skills spec, official Anthropic guidance, and production experience. Covers SKILL.md structure, frontmatter, description writing, single-file vs references/ layout, progressive disclosure, testing, patterns, troubleshooting, and distribution across all surfaces (Claude.ai, Claude Code, API, Agent SDK). Use when creating a skill, reviewing skill quality, debugging why a skill won't trigger, structuring skill directories, or writing skill descriptions.
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
+  categories: "agents, knowledge"
+  topics: "agent-skills, skill-authoring, prompt-design, spec, best-practices"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/skills-best-practices
     emoji: "📐"
