@@ -7,6 +7,50 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-26
+
+### Added
+
+- SKILL.md: Rust 1.96-1.98 sugar and tooling - `assert_matches!`/`debug_assert_matches!` (1.96), plus let-chains (stable in edition 2024 since 1.88) and async closures (1.85), which the "Recent sugar" section skipped even though the skill defaults to edition 2024.
+- New reference references/project-shape.md, and a pointer to it from SKILL.md's Project Structure section: the multi-crate cliff the skill never covered. Workspaces and `workspace.dependencies` (features can be added by a member, never subtracted), `[workspace.lints]` plus the trap that `[lints] workspace = true` is not implicitly inherited - a member that omits it is silently unlinted, which is why Cargo ships `missing_lints_inheritance`; feature flags including `dep:` (1.60) and the `foo?/bar` conditional form, and why features must be additive; `build.rs` with the `cargo:` -> `cargo::` directive change (1.77) and the two costs of adding one (build-time tool requirements that break `cargo install` for users, and opacity to compiler caches); what `rust-version` now controls, given edition 2024's `resolver = "3"` flips `incompatible-rust-versions` to `fallback`, so a stale MSRV silently holds the whole dependency tree back; and `#[non_exhaustive]` as the right default for a published error enum, with the `E0639` struct-literal error it produces downstream.
+- references/dev-environment.md: supply-chain hygiene, previously absent entirely - `cargo audit` against the RustSec database as the first step, `cargo deny` with the warning that `cargo deny init` writes a template that fails immediately (an empty license allow-list rejects everything), and `cargo machete` with its documented static-`use`-scan false positives.
+- references/dev-environment.md: `cargo build --timings` as the free diagnostic to run *before* installing a build cache, plus `cargo fix --edition` and `cargo clippy --fix`.
+- references/crate-shortlist.md: `tracing_subscriber::fmt()` writes to **stdout** by default (`SubscriberBuilder`'s writer parameter is `W = fn() -> Stdout`, with no TTY detection), which silently corrupts any binary whose stdout carries data - JSON-RPC, MCP, a CLI piping records. `.with_writer(std::io::stderr)` is the documented fix, and the skill's own example inherited the default. Also the `json` feature and `tracing-appender` for production logging.
+- references/crate-shortlist.md: a table for when the anyhow/thiserror split is not enough - `eyre` (customizable reports), `miette` (source-span diagnostics), `snafu` (per-`?` context selectors), `error-stack` (attachable context stack).
+- references/releasing.md: crates.io Trusted Publishing - OIDC via `rust-lang/crates-io-auth-action@v1` with 30-minute tokens, removing the stored `CARGO_REGISTRY_TOKEN` secret, with the two constraints (first publish still needs an API token; there is no `cargo publish --trusted-publishing` flag).
+- references/releasing.md: `dist` hard-refuses a Linux-host -> macOS cross-build via a typed `UnsupportedCrossCompile` error ("cross-compiling to macOS is a road paved with sadness - we cowardly refuse to walk it"), which is the concrete decision criterion between Route A and Route B.
+- references/releasing.md: `clap_complete`'s `generate_to` named as the compile-time API the existing "ship pre-generated completions" advice requires, plus `clap_mangen`.
+- references/async-basics.md: `#[tokio::test(start_paused = true)]` cannot control `std::time::Instant`, so production code must use `tokio::time::Instant` to be testable at all (behavior is identical outside a paused runtime); advance with `advance()`, not `sleep()`. Plus `tokio-console` for diagnosing a task that is not being polled, and a note that `async-std` is discontinued.
+- references/testing.md: `cargo clippy --all-targets` lints `tests/` and `benches/`, so `print_stdout`/`unwrap_used`-style lints need a crate-level allow header there.
+
+### Changed
+
+- SKILL.md Minimal Cargo.toml: `unsafe_code` is now `"deny"` rather than `"forbid"`. `forbid` cannot be lifted by a local `#[allow]` with a SAFETY justification, and that bites on ordinary `mmap`, not only on FFI - the previous "downgrade to deny if you do FFI" comment understated when it matters.
+- references/dev-environment.md: rewrote the kache quirks table against 0.16.0 (pin was 0.9.0, seven minors back). Four claims had gone stale: `cache_executables` now defaults to **`true` on Linux and macOS** (only Windows keeps `false`), so the "turn it on" advice is removed; eviction has been **cost-aware** since 0.12.0, indexing each entry's `compile_time_ms` rather than ranking by size, which retires the "LRU throws away your expensive artifacts first" failure mode (the 50GiB cap stands, now with its 10% hysteresis band); the cache key hashes the `rustc --version --verbose` banner plus the linker's `--version`, with no LLVM-version component as previously claimed; and the path-leak detector is `KACHE_LOG=warn`, not `KACHE_LOG=kache=warn`. The undocumented S3 virtual-hosted/`NoSuchKey` row is replaced with the documented endpoint requirement (kache always addresses path-style).
+- references/dev-environment.md: "kache disables incremental compilation - do not turn it back on" no longer holds unconditionally; `adaptive_incremental` defaults to `true` and hands a repeatedly-missing crate an isolated incremental directory for a bounded run. Adds `cache.incremental_crates`, workspace-level `[[workspace.extra_inputs]]`, `kache sync`'s non-zero exit on partial failure (0.15.0) with `--allow-partial`, the proc-macro env-var keying fix (0.13.0), the schema v27 one-time cold miss, and the `KACHE_PRESERVE_INCREMENTAL` caveat on `KACHE_DISABLED=1`.
+- references/releasing.md: `breaking_always_increment_major` was presented as a release-plz config key alongside `features_always_increment_minor`. It is not one - it exists only as a Rust API on the version updater, so readers were being sent to look for a `release-plz.toml` key that does not exist.
+- references/releasing.md: "a pull request opened by `GITHUB_TOKEN` does not trigger workflows" restated - GitHub now creates those runs in an approval-required state rather than not at all. The practical failure and the PAT recommendation are unchanged.
+- references/dev-environment.md: sccache's "leaves incremental compilation on (which is what keeps your own workspace crates rebuilding fast)" was misleading - sccache does not change the setting, but "Incrementally compiled crates cannot be cached" either way, which is why the skill's own CI line sets `CARGO_INCREMENTAL=0`. Its linker-crate exclusion is now quoted directly.
+- references/dev-environment.md + releasing.md: `actions/checkout@v6` -> `@v7`.
+- SKILL.md + references/dev-environment.md: `cargo install --locked bacon` at both occurrences, matching bacon's own documented install command.
+- references/dev-environment.md: the macOS linker note now cites mold's own "mold does not support macOS" and reflects wild's move to `wild-linker/wild` (published as the `wild-linker` crate), whose Mach-O support is still listed as unsupported.
+- references/performance.md: Rust 1.97 made **v0 symbol mangling the default**, which can defeat older profilers and debuggers and changes backtrace text formatting - so garbled frames after a toolchain bump are usually a stale tool, not a broken build. `cargo-flamegraph` on Linux now needs `--no-rosegment` because rust-lld is the default linker since 1.90.
+- references/performance.md: `dhat` is no longer described as "native-speed" - its docs warn the slowdown "can be large" - and its maintenance caveat is noted.
+- references/async-basics.md: `block_in_place` "works only on the multi-threaded runtime" was too strong; calling it outside a runtime is allowed and simply runs the closure. The `current_thread` panic is the actual constraint.
+- references/error-handling.md: clippy's `unwrap_used` does not flag literally every `.unwrap()` - `allow-unwrap-in-consts` defaults to `true`.
+- references/crate-shortlist.md: the jiff migration list claimed more than upstream shows - the arrow-rs and jj-vcs changes are still open PRs, while kube-rs and k8s-openapi have landed. Adds the `jiff-chrono-conversions` bridge, `jiff-sqlx` tracking sqlx 0.9, jiff's 0.2 support commitment (critical fixes for a year after 1.0), and the note that chrono's deprecation lives in an issue thread rather than its README.
+- SKILL.md: the unbounded-read anti-pattern now attributes its quote to `BufRead::read_line`, where std actually carries the warning, and explains that `.lines()` inherits it by delegation.
+
+### Deprecated
+
+- references/crate-shortlist.md: `serde_yaml` and `bincode` were listed as plain "other formats" with no caveat. `serde_yaml` is archived at `0.9.34+deprecated` with no official successor; `bincode` 3.0.0 is a tombstone release whose entire `src/lib.rs` is `compile_error!("https://xkcd.com/2347/")`, so `bincode = "3"` fails to compile rather than failing at runtime - 2.0.1 is the last usable version.
+
+### Security
+
+- references/dev-environment.md: notes that Rust 1.96.0 shipped Cargo fixes for CVE-2026-5222 and CVE-2026-5223, and 1.96.1 patched CVE-2025-15661, CVE-2026-55199 and CVE-2026-55200 in vendored libssh2 - a concrete argument that a `rust-toolchain.toml` pin is for reproducibility, not for freezing.
+
+Verified against: rust@1.98.0, reqwest@0.13.4, jiff@0.2.35, kache@0.16.0
+
 ## [0.4.3] - 2026-08-21
 
 ### Changed

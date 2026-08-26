@@ -2,10 +2,10 @@
 name: rust-dev
 description: Practical day-1 guide to building applications in Rust well. Covers the mental model (ownership, errors as values, traits-not-interfaces), day-1 decisions (String vs &str, Box vs Rc vs Arc, dyn vs impl Trait, anyhow vs thiserror), idioms, anti-patterns, and a tight crate shortlist (tokio, serde, anyhow, clap, reqwest, tracing, axum, sqlx). Use when starting a Rust project, learning Rust from another language, wrestling with the borrow checker, choosing crates, structuring modules, configuring Cargo.toml/clippy/rustfmt, testing, profiling, or releasing a binary.
 metadata:
-  version: "0.4.3"
+  version: "0.5.0"
   categories: "development"
   topics: "rust, ownership, cargo, crates, tokio"
-  upstream: "rust@1.95.0, axum@0.8.9, reqwest@0.13.3, sqlx@0.9.0, jiff@0.2.24, kache@0.9.0, dist@0.32.0, release-plz-action@0.5.131"
+  upstream: "rust@1.98.0, axum@0.8.9, reqwest@0.13.4, sqlx@0.9.0, jiff@0.2.35, kache@0.16.0, dist@0.32.0, release-plz-action@0.5.131"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/rust-dev
     emoji: "🦀"
@@ -54,7 +54,7 @@ cargo update                 # recompute Cargo.lock within existing semver range
 
 **rust-analyzer is mandatory.** It is the language server every editor uses (VS Code, Zed, Neovim, Helix, RustRover uses its own engine but is comparable). In VS Code, install the `rust-analyzer` extension and set `rust-analyzer.check.command` to `"clippy"` so you get lint feedback on save.
 
-**Want a file watcher later?** `cargo install bacon`, then run `bacon` in your project. Not needed on day 1.
+**Want a file watcher later?** `cargo install --locked bacon`, then run `bacon` in your project. Not needed on day 1.
 
 ## The Rust Mental Model in 5 Ideas
 
@@ -175,7 +175,7 @@ let Some(name) = user.name else { return Err(anyhow!("no name")); };
 
 **Derive macros.** `#[derive(Debug, Clone, PartialEq)]` gets you 80% of the boilerplate for free. Add `#[derive(Serialize, Deserialize)]` for JSON.
 
-**Recent sugar (Rust 1.95+).** Two stabilized features worth knowing: `cfg_select!` is a compile-time `match` over `cfg` predicates (replaces most uses of the `cfg-if` crate), and `if let` guards now work on `match` arms (`match x { Some(v) if let Ok(n) = v.parse::<i32>() => ... }`).
+**Recent sugar.** Stabilized features worth knowing, newest first: `cfg_select!` is a compile-time `match` over `cfg` predicates, replacing most uses of the `cfg-if` crate, and `if let` guards work on `match` arms (`match x { Some(v) if let Ok(n) = v.parse::<i32>() => ... }`) - both 1.95. `assert_matches!` and `debug_assert_matches!` (1.96) assert on a pattern rather than equality, which is the natural assertion for an enum. Two older ones you will see constantly and should not mistake for exotic: **let-chains** (`if let Some(x) = a && x > 3 { ... }`), stable in edition 2024 since 1.88, and **async closures** (`async || { ... }`, with the `AsyncFn` family of bounds), stable since 1.85.
 
 ## Coming From X, Here Is What Bites You
 
@@ -241,7 +241,7 @@ These are the mistakes that show up in every newcomer's code review. Avoid them.
 5. **Brute-force `.clone()` until it compiles.** Sometimes cloning is right, but if you are scattering `.clone()` to silence the borrow checker, the design is wrong. Step back and ask the 3 questions about who owns what.
 6. **Trying to inherit via `Deref`**. `Deref` is for smart-pointer-like wrappers, not for OOP-style "extends". Use composition.
 7. **Reaching for `unsafe`.** App developers should essentially never need it. `unsafe` does not turn off the borrow checker; it lets you do five specific things (deref raw pointers, call unsafe functions, access mutable statics, implement unsafe traits, access union fields) with the contract that you have manually verified the invariants.
-8. **Reading untrusted input with `.lines()` or `read_line`.** These allocate without bound. std's own docs warn that "it is possible for an attacker to continuously send bytes without ever sending a newline or EOF" - so a hostile or malformed peer can drive your process out of memory. Bound the read with `Read::take(n)`, and use `BufRead::skip_until` (stable since 1.83) to discard an over-long line. `for line in reader.lines()` is the first thing every tutorial teaches and almost none mention this.
+8. **Reading untrusted input with `.lines()` or `read_line`.** These allocate without bound. `BufRead::read_line`'s own docs warn that "it is possible for an attacker to continuously send bytes without ever sending a newline or EOF" - and `.lines()` inherits that behavior, since each item is a `read_line` under the hood. Either way a hostile or malformed peer can drive your process out of memory. Bound the read with `Read::take(n)`, and use `BufRead::skip_until` (stable since 1.83) to discard an over-long line. `for line in reader.lines()` is the first thing every tutorial teaches and almost none mention this.
 
 ## What to Defer
 
@@ -278,7 +278,9 @@ codegen-units = 1
 # room to learn. Upgrade to clippy::pedantic later if you want the full ride.
 # =============================================================================
 [lints.rust]
-unsafe_code     = "forbid"   # downgrade to "deny" if you do FFI
+# "deny", not "forbid": forbid cannot be lifted by a local #[allow] with a
+# SAFETY comment, and that bites on ordinary mmap, not just FFI.
+unsafe_code     = "deny"
 unreachable_pub = "warn"
 
 [lints.clippy]
@@ -347,6 +349,8 @@ my-app/
 
 Inline modules with `mod { ... }` until a file gets long, then split. Do not pre-split.
 
+The layout above is one crate. The moment you want a second - a shared library plus a CLI, a server plus its client - you need a Cargo **workspace**, along with the `Cargo.toml` machinery that goes with growing past a single crate: feature flags, build scripts, and what `rust-version` actually controls. That is `references/project-shape.md`.
+
 ## Learning Path
 
 1. **The Rust Book** (https://doc.rust-lang.org/book/) - canonical, free, current. The interactive Brown University version (https://rust-book.cs.brown.edu/) adds quizzes and visualizations.
@@ -368,6 +372,7 @@ Detailed material lives in `references/`. Read each when you hit the topic.
 - **traits-and-generics.md** - traits as bounds, `dyn` vs `impl Trait` vs generics, common derives, `From`/`Into`/`Display`/`Debug`, blanket impls, the orphan rule
 - **async-basics.md** - `tokio`, `#[tokio::main]`, `.await`, `Send`/`Sync`, common pitfalls (blocking in async, `MutexGuard` across `.await`)
 - **crate-shortlist.md** - minimal usage example for each of the 8 crates above
+- **project-shape.md** - past one crate: workspaces and inherited dependencies, `[workspace.lints]`, feature flags, `build.rs`, what `rust-version` controls, `#[non_exhaustive]`
 - **testing.md** - what to test and what to skip, pragmatic test organization, keeping the suite fast, the minimal high-value tool kit
 - **dev-environment.md** - the fast build loop, build caching (kache setup and its quirks, sccache, rust-cache), platform-aware linker guidance, CI, file watchers
 - **releasing.md** - shipping a binary: `dist` vs a hand-rolled `release-plz` + `cargo-zigbuild` pipeline, `[profile.dist]`, cross-compiling every target from one runner, fanning out to binstall/Homebrew/Nix, and guarding what the published crate contains

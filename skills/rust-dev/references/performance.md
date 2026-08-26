@@ -19,6 +19,8 @@ Whatever you build to answer a performance question - a benchmark, an A/B timing
 
 A profiler needs optimized code *and* debug symbols, but a plain `--release` build strips the symbols - so the profile comes back as unreadable `[unknown]` frames. Add a `profiling` profile once:
 
+One toolchain change to know before you blame your tools: **Rust 1.97 made the v0 symbol mangling scheme the default.** The release notes are explicit that this "may cause some tools (such as debuggers or profilers, especially with old versions) to fail to demangle symbols emitted by Rust" and "may also cause the formatting of text in backtraces to change". So garbled or undemangled frames after a toolchain bump usually mean an out-of-date profiler, not a broken build.
+
 ```toml
 [profile.profiling]
 inherits = "release"
@@ -26,8 +28,8 @@ debug = true
 ```
 
 - **`samply`** is the go-to sampling profiler: `cargo install --locked samply`, build with `cargo build --profile profiling`, then `samply record ./target/profiling/my-app`. It opens an interactive Firefox Profiler view in the browser; works on macOS, Linux, and Windows (on Linux, grant perf access once with `sysctl kernel.perf_event_paranoid=1`).
-- **`cargo-flamegraph`** produces a static flamegraph SVG; `samply` has largely displaced it for interactive work.
-- For **heap profiling** - what allocates and how much - the `dhat` crate gives in-process, native-speed heap profiling: add it, set its global allocator, and view the profile in the DHAT online viewer (cross-platform, unlike Valgrind).
+- **`cargo-flamegraph`** produces a static flamegraph SVG; `samply` has largely displaced it for interactive work. On Linux it now needs `--no-rosegment`, because rust-lld became the default linker in 1.90 and perf cannot generate accurate stack traces without it - the same applies under mold.
+- For **heap profiling** - what allocates and how much - the `dhat` crate gives in-process, cross-platform heap profiling (unlike Valgrind): add it, set its global allocator, and view the profile in the DHAT online viewer. Budget for the slowdown; its docs warn that "the program will run more slowly than normal... it can be large", and the author notes maintenance is not a high priority. It is a tool you reach for deliberately, not one you leave wired in.
 - The **Rust Performance Book** (https://nnethercote.github.io/perf-book/) is the canonical guide - read it before reaching for tricks.
 
 For a release profile that is representative and ships fast:
