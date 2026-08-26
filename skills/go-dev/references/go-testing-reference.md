@@ -1,6 +1,6 @@
 # Go Testing Reference
 
-Covers Go testing best practices, patterns, and tooling as of Go 1.26 (2026).
+Covers Go testing best practices, patterns, and tooling as of Go 1.27 (August 2026).
 
 ## Table-Driven Tests
 
@@ -68,7 +68,7 @@ func TestParallel(t *testing.T) {
 
 Default parallelism = `GOMAXPROCS`. Override with `go test -parallel N`.
 
-## Testing Helpers (Go 1.14-1.26)
+## Testing Helpers (Go 1.14-1.27)
 
 ### t.Helper()
 
@@ -125,9 +125,23 @@ func TestConfig(t *testing.T) {
 
 Cannot be used with `t.Parallel()` (panics).
 
-### t.Context() - Go 1.21
+### t.Chdir(dir) - Go 1.24
 
-Returns a context cancelled when the test finishes:
+Change the working directory for the duration of a test, restored on cleanup:
+
+```go
+func TestLoadFromCWD(t *testing.T) {
+    t.Chdir("testdata/project")
+    cfg, err := LoadConfig()
+    require.NoError(t, err)
+}
+```
+
+Like `t.Setenv`, it cannot be combined with `t.Parallel()`.
+
+### t.Context() - Go 1.24
+
+Returns a context cancelled when the test finishes - "The new `T.Context` and `B.Context` methods return a context that's canceled after the test completes and before test cleanup functions run.":
 
 ```go
 func TestWithContext(t *testing.T) {
@@ -151,9 +165,22 @@ func TestRender(t *testing.T) {
 
 Available as `T.ArtifactDir`, `B.ArtifactDir`, and `F.ArtifactDir`.
 
+### t.Attr(key, value) and t.Output() - Go 1.25
+
+`t.Attr` attaches a structured key/value attribute to a test, surfaced in `go test -json` output; `t.Output` returns an `io.Writer` whose writes are interleaved into that same stream rather than captured as raw log lines. gotestsum v1.13.0 added support for consuming these attributes.
+
+```go
+func TestPipeline(t *testing.T) {
+    t.Attr("dataset", "fixtures/large.json")
+    fmt.Fprintln(t.Output(), "stage 1 complete")
+}
+```
+
 ## Testify
 
-Latest: **v1.10+**. The most popular assertion library. Four packages:
+Latest: **v1.12.1** (August 2026). The most popular assertion library. Four packages:
+
+There will be no v2 - "Testify is being maintained at v1, no breaking changes will be accepted in this repo."
 
 ### assert (soft assertions - test continues)
 
@@ -238,8 +265,8 @@ func TestService(t *testing.T) {
 
 | Library | Approach | Best For |
 |---------|----------|----------|
-| **go.uber.org/mock** (v0.6) | Code gen via `mockgen` | Precise expectations, call ordering |
-| **vektra/mockery** (v3) | Batch code gen, templates | Large codebases (5-30x faster than sequential mockgen) |
+| **go.uber.org/mock** (v0.6.0) | Code gen via `mockgen` | Precise expectations, call ordering |
+| **vektra/mockery** (v3.7.4) | Batch code gen, templates | Large codebases (5-30x faster than sequential mockgen) |
 | **matryer/moq** | Function-field based mocks | Lightweight, simple mocks |
 | **testify/mock** | Runtime (no codegen) | Quick mocking without generators |
 | **Hand-written** | Interface implementation | Full control, no dependencies |
@@ -247,8 +274,10 @@ func TestService(t *testing.T) {
 ### gomock (go.uber.org/mock)
 
 ```bash
-go install go.uber.org/mock/mockgen@latest
+go install go.uber.org/mock/mockgen@v0.6.0
 ```
+
+mockgen has two supported modes: **source mode** (`-source=repository.go`, shown below) and **package mode** (`-destination=... <import path> <interfaces>`). Package mode replaced reflect mode - "Deprecated reflect mode and replaced it with the new package mode." Do not write new `-reflect`-style invocations.
 
 ```go
 //go:generate mockgen -source=repository.go -destination=mock_repository.go -package=user
@@ -269,7 +298,7 @@ func TestWithGomock(t *testing.T) {
 Config-driven batch processing:
 
 ```yaml
-# .mockery.yml
+# .mockery.yml (or .mockery.yaml - both are discovered)
 packages:
   github.com/yourorg/myapp/internal/user:
     interfaces:
@@ -299,6 +328,8 @@ Benefits of `b.Loop()`:
 - Automatically excludes setup/cleanup from timing
 - Prevents dead-code elimination
 - Benchmark function called only once (faster)
+
+Go 1.26 removed the last reason to stay on `b.N` - "The `B.Loop` method no longer prevents inlining in the loop body, which could lead to unanticipated allocation and slower benchmarks. With this fix, we expect that all benchmarks can be converted from the old `B.N` style to the new `B.Loop` style with no ill effects."
 
 ### Old pattern (still works)
 
@@ -476,6 +507,8 @@ func TestRender(t *testing.T) {
 
 Update golden files: `go test -update ./...`
 
+**Keep goldens host-independent.** A golden whose content depends on `runtime.GOARCH`, `runtime.GOOS`, path separators, or the host's locale regenerates correctly on your machine and fails on the CI runner - the classic shape is a fixture written on arm64 macOS and asserted on amd64 Linux. Pin every host-derived input explicitly in the test rather than letting it default, or split the golden per platform.
+
 Libraries: `sebdah/goldie/v2`, `gotest.tools/v3/golden`
 
 ## testdata/ Convention
@@ -542,7 +575,9 @@ func TestClient(t *testing.T) {
 
 ## testcontainers-go
 
-Spin up ephemeral infrastructure for integration tests:
+Latest: **v0.44.0**. Spin up ephemeral infrastructure for integration tests.
+
+Use the module-specific `Run` constructor, not `GenericContainer` - "`GenericContainer` is the old way to create a container, and we recommend using `Run` instead, as it could be deprecated in the future." Note also that v0.43.0 changed `wait.ForSQL`: "Users of `wait.ForSQL` need to follow the new API contract, using Moby's `network.Port` instead of `string`".
 
 ```go
 func TestPostgres(t *testing.T) {
@@ -587,6 +622,8 @@ func TestConcurrent(t *testing.T) {
 }
 ```
 
+Go 1.27 adds two conveniences: `synctest.Sleep`, which "combines `time.Sleep` and `synctest.Wait`", and `httptest.NewTestServer`, which "creates a `Server` configured to use an in-memory fake network suitable for use with the `testing/synctest` package" - the missing piece for testing HTTP clients under a fake clock.
+
 ## Quick Reference: Test Flags
 
 ```bash
@@ -605,4 +642,8 @@ go test -fuzz=FuzzParse ./...          # Fuzzing
 go test -coverprofile=c.out ./...      # Coverage
 go test -covermode=atomic ./...        # Atomic coverage
 go test -coverpkg=./... ./...          # Cross-package coverage
+go test -artifacts ./...               # Emit an artifact manifest (Go 1.26+)
+go test -outputdir=./out ./...         # Where t.ArtifactDir() writes
 ```
+
+**A cached green run proves nothing.** `go test` caches results for unchanged packages and replays them, so a passing run may not have executed a single test. When a result matters - before a release, after a dependency bump, when confirming a fix - pass `-count=1` to force real execution. This is why the CI recipes in this skill use it.

@@ -1,6 +1,6 @@
 # golang-migrate Reference
 
-Latest: **v4.19.1** (November 2025). Supports Go 1.24 and 1.25. MIT license, 18K+ stars.
+Latest: **v4.19.1** (2025-11-29; still current as of 2026-08). Supports Go 1.24+. MIT license, 18K+ stars.
 
 ## Installation
 
@@ -50,6 +50,8 @@ migrations/
 ```
 
 Control zero-padding with `-digits N` (default: 6).
+
+Two more `create` flags: `-format` takes "a Go time format string" for the version prefix, and `-tz` sets the timezone used to generate it.
 
 ### Timestamp (better for larger teams)
 
@@ -186,8 +188,8 @@ db, _ := sql.Open("postgres", connStr)
 driver, _ := postgres.WithInstance(db, &postgres.Config{})
 m, _ := migrate.NewWithDatabaseInstance("file://migrations", "postgres", driver)
 
-m.Up()        // Apply all pending
-m.Steps(2)    // Apply 2 up
+m.Up()        // Apply ALL pending migrations - not just the next one
+m.Steps(2)    // Apply exactly 2 up
 m.Steps(-1)   // Revert 1
 m.Version()   // Get current version + dirty flag
 m.Force(3)    // Set version without running
@@ -195,6 +197,8 @@ m.Close()     // Close connections
 ```
 
 Always check for `migrate.ErrNoChange` when calling `Up()` - it means no new migrations exist and is not a real error.
+
+**`Up()` and `Steps(1)` are not interchangeable.** `Up()` applies every pending migration in one call; `Steps(1)` applies exactly one. Automation wired to `Up()` on merge will apply an entire backlog of DDL the first time it runs, which surprises teams who assumed each deploy advanced one version. Decide deliberately which semantics a given entry point has, and name it accordingly.
 
 ## Embedding Migrations with embed.FS
 
@@ -247,13 +251,16 @@ URL format: `postgres://user:password@host:port/dbname?query`
 | `x-multi-statement` | Enable multi-statement execution (default: false) |
 | `x-multi-statement-max-size` | Max statement size in bytes (default: 10MB) |
 | `search_path` | Schema search path |
+| `x-migrations-table-quoted` | Disable quoting of the migrations table name - "By default, migrate quotes the migration table for SQL injection safety reasons. This option disable quoting" |
 | `sslmode` | disable, require, verify-ca, verify-full |
 
 Uses `pg_advisory_lock` for safe concurrent migrations.
 
 ## Transaction Handling
 
-golang-migrate does **NOT** automatically wrap migrations in transactions. You must use explicit `BEGIN`/`COMMIT`:
+golang-migrate does **NOT** wrap a migration in a transaction at the library level, so the portable advice is to write explicit `BEGIN`/`COMMIT`.
+
+One database-specific exception is worth knowing: "In PostgreSQL running multiple SQL statements in one `Exec` executes them inside a transaction." A multi-statement Postgres migration is therefore already atomic in practice - but writing `BEGIN`/`COMMIT` anyway costs nothing, keeps the intent explicit, and stays correct on other engines:
 
 ```sql
 BEGIN;

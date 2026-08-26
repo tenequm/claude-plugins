@@ -1,6 +1,6 @@
 # gotestsum Reference
 
-Latest: **v1.13.0** (September 2025). Module: `gotest.tools/gotestsum`. Requires Go 1.24+.
+Latest: **v1.13.0** (September 2025; still current as of 2026-08). Module: `gotest.tools/gotestsum`. Requires Go 1.24+.
 
 A test runner that wraps `go test -json` with readable output, watch mode, JUnit XML, and rerun capabilities.
 
@@ -147,7 +147,7 @@ go test -json -short ./... | gotestsum tool slowest --skip-stmt "testing.Short" 
 ```bash
 # Partition tests across CI jobs based on timing data
 echo -n "matrix=" >> $GITHUB_OUTPUT
-go list ./... | gotestsum tool matrix --timing-files ./*.log --partitions 4 >> $GITHUB_OUTPUT
+go list ./... | gotestsum tool ci-matrix --timing-files ./*.log --partitions 4 >> $GITHUB_OUTPUT
 ```
 
 ## Post-Run Commands
@@ -176,7 +176,7 @@ Post-run environment variables:
 --no-color                   Disable color (auto-detected in CI)
 --max-fails int              Stop after N failures
 --jsonfile string            Write all TestEvents to file
---jsonfile-timing-events     Write only pass/skip/fail events
+--jsonfile-timing-events string  Write only pass/skip/fail events to the file
 --junitfile string           Write JUnit XML
 --junitfile-testsuite-name   Name format: full|relative|short
 --junitfile-testcase-classname  Classname format: full|relative|short
@@ -188,6 +188,8 @@ Post-run environment variables:
 --rerun-fails-max-failures   Skip rerun if initial failures > N (default 10)
 --rerun-fails-run-root-test  Rerun root test case for subtest failures
 --rerun-fails-abort-on-data-race  Stop rerun on data race
+--rerun-fails-report string  Write a report of the reruns to the file
+--ignore-non-json-output-lines  Send non-JSON stdout lines to stderr
 --watch                      Watch .go files and rerun
 --watch-chdir                cd to modified file's dir
 --watch-clear                Clear screen on rerun
@@ -207,6 +209,7 @@ Post-run environment variables:
 | `GOTESTSUM_JUNITFILE_PROJECT_NAME` | Project name in JUnit |
 | `GOTESTSUM_JSONFILE` | JSON output path |
 | `TEST_DIRECTORY` | Default test directory (instead of `./...`) |
+| `GOVERSION` | Go version for JUnit XML when `go` is not on PATH |
 
 ## Justfile Recipes
 
@@ -243,7 +246,7 @@ test-flaky:
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
-| v1.13.0 | Sep 2025 | `--watch-clear` flag, Go test attributes support (Go 1.24+) |
+| v1.13.0 | Sep 2025 | `--watch-clear` flag, Go test attributes support (`t.Attr`, Go 1.25+) |
 | v1.12.3 | Jun 2025 | `--rerun-fails-abort-on-data-race` flag |
 | v1.12.2 | May 2025 | `--junitfile-hide-skipped-tests` flag |
 | v1.12.1 | Mar 2025 | Go 1.24 compatibility, JUnit `skipped` attribute |
