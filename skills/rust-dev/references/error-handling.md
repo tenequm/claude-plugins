@@ -49,7 +49,7 @@ n.ok_or("missing");              // turn Option into Result
 
 **Rule of thumb for app code**: outside of `main()` (which can panic), use `?` everywhere. `unwrap` and `expect` should be flagged in code review unless paired with a comment explaining why the case is impossible.
 
-To enforce this mechanically, clippy's `unwrap_used` lint flags every `.unwrap()`. It is in the `restriction` group - off by default, and a deliberate per-project opt-in, not a blanket default. If you enable it, add a `clippy.toml` with `allow-unwrap-in-tests = true`, since test code panics by design. Leave `expect_used` off - `.expect("reason")` is the documented-invariant form you want people reaching for.
+To enforce this mechanically, clippy's `unwrap_used` lint flags `.unwrap()` calls - though not literally every one: `allow-unwrap-in-consts` defaults to `true`, so an unwrap in a const context is exempt without any configuration from you. The lint is in the `restriction` group - off by default, and a deliberate per-project opt-in, not a blanket default. If you enable it, add a `clippy.toml` with `allow-unwrap-in-tests = true`, since test code panics by design. Leave `expect_used` off - `.expect("reason")` is the documented-invariant form you want people reaching for.
 
 ## `anyhow` for Application Code
 

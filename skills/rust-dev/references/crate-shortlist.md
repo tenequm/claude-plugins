@@ -28,7 +28,12 @@ let user: User = serde_json::from_str(json)?;
 let back = serde_json::to_string_pretty(&user)?;
 ```
 
-Other formats: `serde_yaml`, `toml`, `bincode`, `serde_qs`, `rmp-serde` (MessagePack). Same derive, different crate.
+Other formats: `toml`, `serde_qs`, `rmp-serde` (MessagePack). Same derive, different crate.
+
+Two names you will find in older guides that you should not reach for now:
+
+- **`serde_yaml` is unmaintained.** Its repository is archived and the last release is `0.9.34+deprecated` (March 2024), with no official successor named. `serde_yaml_ng` and `serde_yml` are community continuations; evaluate them rather than assuming.
+- **`bincode` 3.0.0 is a tombstone.** Development stopped after a doxxing and harassment incident, and the entire contents of 3.0.0's `src/lib.rs` is `compile_error!("https://xkcd.com/2347/")` - so adding `bincode = "3"` does not fail at runtime, it fails to compile. `2.0.1` is the last usable release. For a new binary format, upstream points at `postcard` or `rkyv`.
 
 Common attributes:
 ```rust
@@ -223,6 +228,17 @@ async fn main() -> anyhow::Result<()> {
 
 Run with `RUST_LOG=info cargo run`. Use `error!`, `warn!`, `info!`, `debug!`, `trace!`. Add structured fields by passing them as named args: `info!(user_id, action = "create", "user created")`.
 
+**The default writer is stdout, and that is a real hazard.** `SubscriberBuilder`'s writer type parameter defaults to `fn() -> Stdout`, with no TTY detection - so the example above interleaves log lines into stdout. For a service that is merely untidy. For any binary whose **stdout carries data** - a JSON-RPC or MCP server, a CLI that pipes records into another process, anything with a machine-readable stdout contract - it silently corrupts the output stream, and the failure looks like a protocol bug rather than a logging one. Logs belong on stderr; make it explicit:
+
+```rust
+tracing_subscriber::fmt()
+    .with_writer(std::io::stderr)          // never inherit the stdout default
+    .with_env_filter(EnvFilter::from_default_env())
+    .init();
+```
+
+Two more you will want in production and not before: the `json` feature swaps in `format::Json`, "newline-delimited JSON logs... intended for production use", which is what a log aggregator wants instead of the human-readable default; and `tracing-appender` provides file appenders plus a non-blocking writer so a slow sink cannot stall the code that logged.
+
 ## `axum`
 
 Web framework. Built on `tokio` + `hyper` + `tower`. The 2026 default.
@@ -304,8 +320,9 @@ Migrations: `sqlx migrate add init`, write SQL, `sqlx migrate run`.
 
 Dates and times. As of Jan 2026 the chrono maintainer announced soft-deprecation and recommends `jiff` (BurntSushi) for new code. Reality in May 2026:
 
-- `chrono` 0.4 is still production-safe and integrates cleanly with `serde`, `sqlx`, `serde_json`, and the rest of the ecosystem.
-- `jiff` is the recommended successor, but still pre-1.0 (latest 0.2.x). Major projects are migrating (kube-rs done, arrow-rs proposed, jj-vcs, k8s-openapi).
+- `chrono` 0.4 is still production-safe and integrates cleanly with `serde`, `sqlx`, `serde_json`, and the rest of the ecosystem. Note the deprecation notice lives in the maintainer's issue thread, not in chrono's README, so the crate page looks entirely healthy.
+- `jiff` is the recommended successor, but still pre-1.0 (latest 0.2.x), and its author says plainly: "I don't currently have a timeline for a Jiff 1.0 release." Migration across the ecosystem is partial rather than done - kube-rs and k8s-openapi have landed, while the arrow-rs and jj-vcs changes are still open PRs.
+- Two things that lower the risk of picking `jiff` now: `jiff-sqlx` tracks sqlx 0.9, and `jiff-chrono-conversions` gives you `ToJiff`/`ToChrono` traits so a codebase can hold both during a migration. jiff also commits to critical bug fixes on 0.2 for a year after 1.0 ships.
 
 Pick `chrono` if you need ecosystem integration today. Pick `jiff` for new code that can tolerate pre-1.0 churn and where you want correct timezone-aware arithmetic out of the box.
 
@@ -330,6 +347,19 @@ let now: Timestamp = Timestamp::now();
 let parsed: Timestamp = "2026-04-29T12:00:00Z".parse()?;
 let in_an_hour = now + 1.hour();
 ```
+
+## When `anyhow` + `thiserror` Is Not Enough
+
+The app/library split covers almost everything, and you should not go shopping before you have a concrete complaint. When you do, these are the four alternatives worth knowing and what each actually buys:
+
+| Crate | Reach for it when |
+|---|---|
+| `eyre` | You want `anyhow`'s ergonomics but control over how reports are *rendered* - it is a fork of anyhow built around customizable error reports, usually paired with `color-eyre` for readable panics and backtraces in a binary |
+| `miette` | Your errors point at a span of user input - a parser, a config file, a query language. It renders rustc-style diagnostics with source snippets and carets. (This is what `dist` itself uses.) |
+| `snafu` | You want typed error enums like `thiserror`, but with context selectors that attach data at each `?` site instead of only at the boundary |
+| `error-stack` | You want an attachable, inspectable context *stack* rather than a flat chain - richer than anyhow's `.context()`, at the cost of a more opinionated API |
+
+Do not migrate a working `anyhow`/`thiserror` codebase to any of these without a specific reason; the split in this skill is still the default.
 
 ## Honorable Mentions
 

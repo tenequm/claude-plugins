@@ -144,6 +144,17 @@ Tests run in parallel. Anything touching shared external state needs per-test is
 
 **Environment variables are process-global, and `cargo test` runs tests as threads in one process.** So one test calling `std::env::set_var` corrupts any test that reads that variable - the classic "passes in isolation, fails in the suite" flake. (Rust 2024 makes `set_var` `unsafe` for exactly this reason.) The non-obvious half: isolating the test that *sets* the variable is not enough. **Every test that reads it** must be isolated too, or it will still see the polluted value in a parallel run. Either give each such test a jailed environment (`figment::Jail`, `temp-env`), or thread the config through as a parameter instead of reading the environment inside the code under test - which is the fix that makes the problem go away permanently.
 
+## Lints apply to test and bench code too
+
+`cargo clippy --all-targets` lints `tests/` and `benches/`, not just `src/`. That is what you want for real bugs, but the "smells in non-prototype code" lints from the skill's `[lints.clippy]` table - `print_stdout`, and `unwrap_used`/`expect_used` if you enabled them - fire constantly on code where printing and unwrapping are correct by design. Put a crate-level allow at the top of the file rather than sprinkling per-line ones or weakening the lint globally:
+
+```rust
+// benches/parse.rs
+#![allow(clippy::print_stdout, clippy::unwrap_used, clippy::expect_used)]
+```
+
+A `#[cfg(test)]` support module inside `src/` needs the same treatment, since it is part of the library crate.
+
 ## Two profile traps in the test suite
 
 **`cargo test` builds with the `test` profile, which inherits `dev`** - so `debug-assertions` is on, and `--release` turns it off. That means a `debug_assert!` **inside a dependency** is live during your test suite and dead in production. A dependency asserting an invariant more strictly than it documents can fail your tests on input that works perfectly in a release build. When a test failure points into a dependency's internals, check whether it is a `debug_assert!` before assuming you found a bug in your own code.

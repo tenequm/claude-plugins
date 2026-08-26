@@ -12,6 +12,8 @@ A note on its history, because a stale memory will otherwise scare you off: `dis
 
 Reach for Route B only when you need something dist does not model - an unusual cross-compilation setup, a bespoke distribution fan-out, or strict control over the order in which things publish.
 
+**The concrete fork in the road is macOS cross-compilation.** dist will not plan a Linux-host build of a macOS target at all; it returns a typed `UnsupportedCrossCompile` error whose help text reads "cross-compiling to macOS is a road paved with sadness - we cowardly refuse to walk it." That is a deliberate refusal, not a missing feature, and the supported answer is to let dist run the macOS builds on macOS runners. If you specifically want every artifact built from one Linux runner - which is the whole premise of Route B below - that requirement alone decides it.
+
 ## Route B: a hand-rolled pipeline (one reference implementation)
 
 What follows is **one pipeline that works in production**, not the only correct shape. Copy the parts that fit. The value here is less the YAML than the reasoning behind each decision - most of these were learned by breaking something.
@@ -27,7 +29,7 @@ It runs as two different commands, and the split matters:
 - `release-pr` - keeps the release PR current. Never publishes. Runs on every push to `main`.
 - `release` - publishes to the registry and cuts the tag. Runs only when a release is actually pending.
 
-**Two bump behaviors that surprise people.** On a `0.x` version, a `feat:` commit produces a **patch** bump, not a minor one - `0.2.7` + `feat:` is `0.2.8`. This is deliberate (Cargo treats `0.x` → `0.(x+1)` as the breaking-change channel, so features cannot claim it), and it means a `feat!:` breaking change on `0.2.3` gives you `0.3.0`, not `1.0.0`. Both are overridable (`features_always_increment_minor`, `breaking_always_increment_major`) but the defaults are the correct ones. Expect them rather than fighting them.
+**Two bump behaviors that surprise people.** On a `0.x` version, a `feat:` commit produces a **patch** bump, not a minor one - `0.2.7` + `feat:` is `0.2.8`. This is deliberate (Cargo treats `0.x` → `0.(x+1)` as the breaking-change channel, so features cannot claim it), and it means a `feat!:` breaking change on `0.2.3` gives you `0.3.0`, not `1.0.0`. The first is overridable in config with `features_always_increment_minor`; the second is **not** - `breaking_always_increment_major` exists only as a Rust API on release-plz's version updater, not as a `release-plz.toml` key, so do not go looking for it there. The defaults are the correct ones anyway. Expect them rather than fighting them.
 
 **Squash-merge can silently erase your release.** The version bump is computed from *commit messages*. Squash-merging a PR replaces its commits with a single commit whose message is the **PR title** - so a PR titled `ci: tidy workflow` that happens to contain the `feat:` commit produces no `feat:` in history, and therefore no release at all. The commit you cared about is gone. Either title the PR conventionally (so the squashed message carries the right type), or use a merge commit for release-worthy PRs. This is not a release-plz quirk - it bites every conventional-commit release tool.
 
@@ -40,7 +42,7 @@ The single most important ordering decision. If `cargo publish` runs first and t
     needs: [release-prep]
     if: needs.release-prep.outputs.is_release == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0, persist-credentials: false }
 
       - name: Build + package binaries      # must succeed before anything publishes
@@ -93,7 +95,7 @@ Keep builds cancellable and make publishing non-cancellable:
 
 ### Use a PAT for the release PR, not `GITHUB_TOKEN`
 
-A pull request opened by the default `GITHUB_TOKEN` **does not trigger workflows** - GitHub blocks that to prevent recursion. So a release PR opened with it never runs CI, and you merge a version bump nothing has tested. Give the `release-pr` step a personal access token (or a GitHub App token) instead.
+A pull request opened by the default `GITHUB_TOKEN` does not get CI the way a human-opened one does - GitHub gates that to prevent recursive workflow runs. The current behavior is that the resulting `pull_request` runs are created in an **approval-required** state rather than never existing at all, so the symptom is a release PR sitting with no green checks until somebody clicks through, which is the same practical failure: you merge a version bump nothing has tested. Give the `release-pr` step a personal access token (or a GitHub App token) instead.
 
 ### `[profile.dist]`: pay for optimization only at release
 
@@ -159,6 +161,8 @@ Every channel is fed from the same artifacts, so build once and derive the rest.
 
 **Ship shell completions pre-generated inside the tarball.** Generating them by *running* the binary at install time fails exactly where you cannot afford it - Nix cannot execute the not-yet-patched binary during its install phase, and cross-built binaries cannot run on the build host at all.
 
+With clap, the crate for this is `clap_complete`, and the API you want is `generate_to` - the one documented "for generating at compile-time", writing completion files to a directory from a build script or an `xtask` rather than from the shipped binary at runtime. `clap_mangen` does the same job for man pages.
+
 ### Guard what the published crate actually contains
 
 `exclude` in `Cargo.toml` keeps your published crate small by dropping tests, fixtures, and docs from the `.crate` file. It is also a loaded gun: **exclude a file the code embeds with `include_str!`/`include_bytes!` and `cargo install` breaks for everyone while `cargo build` in your repo keeps working perfectly.** The failure is invisible locally and can survive several releases.
@@ -171,6 +175,26 @@ for f in $(rg -o 'include_(str|bytes)!\("([^"]+)"\)' -r '$2' src/); do
   cargo package --list | grep -qx "$f" || { echo "embedded file not packaged: $f"; exit 1; }
 done
 ```
+
+### Stop storing a registry token: use Trusted Publishing
+
+The pipeline above hands CI a long-lived `CARGO_REGISTRY_TOKEN` out of repository secrets. crates.io now supports **Trusted Publishing**, which removes that secret entirely: "It uses OpenID Connect (OIDC) to verify that your workflow is running from your repository, then provides a short-lived token for publishing." Tokens expire after 30 minutes, and the configuration binds publishing to a specific repository *and workflow filename*, so a compromised unrelated workflow cannot publish.
+
+Configure the crate once under Settings → Trusted Publishing on crates.io (naming the repo and the workflow file), then drop the stored secret:
+
+```yaml
+    permissions:
+      id-token: write     # required for the OIDC token exchange
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+```
+
+Two constraints: the crate must already exist on crates.io, so the very first publish still needs an API token, and there is no `cargo publish --trusted-publishing` flag - the exchange happens in the auth action, which is why the token still arrives through the same env var. GitLab CI is supported in public beta. Both auth methods can be active at once, so migrate first and delete the secret afterwards.
 
 ### Keep the working tree clean, or publishing stops
 

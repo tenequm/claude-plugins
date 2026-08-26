@@ -1,6 +1,6 @@
 # Async Basics
 
-Rust's async is cooperative: `.await` is an explicit yield point. There is no built-in runtime; you pick one. In 2026, that runtime is `tokio` for almost every application. This file covers what you need to write async Rust well from day 1, and the small set of pitfalls that cause most async bugs.
+Rust's async is cooperative: `.await` is an explicit yield point. There is no built-in runtime; you pick one. In 2026, that runtime is `tokio` for almost every application. (If a tutorial hands you `async-std`, stop: it has been discontinued, carries a RustSec advisory for that reason, and its own site still shows no notice. `smol` is the named replacement.) This file covers what you need to write async Rust well from day 1, and the small set of pitfalls that cause most async bugs.
 
 ## Mental Model
 
@@ -160,7 +160,7 @@ Async runtimes assume tasks yield quickly. CPU-bound work (parsing big files, en
 let result = tokio::task::spawn_blocking(|| expensive_computation()).await?;
 ```
 
-**`tokio::task::block_in_place`** runs a blocking section inside the current async task without starving sibling tasks. It works only on the multi-threaded runtime - it **panics** on a `current_thread` runtime - and it suspends any other code running concurrently in the same task (e.g. under `join!`). Prefer `spawn_blocking`; reach for `block_in_place` only when the blocking work genuinely cannot move into its own task:
+**`tokio::task::block_in_place`** runs a blocking section inside the current async task without starving sibling tasks. It **panics on a `current_thread` runtime** - that is the constraint to remember. (Outside any runtime it is simply allowed, and just calls the closure normally, so a helper using it still works in a plain sync test.) It also suspends any other code running concurrently in the same task, e.g. under `join!`. Prefer `spawn_blocking`; reach for `block_in_place` only when the blocking work genuinely cannot move into its own task:
 ```rust
 tokio::task::block_in_place(|| do_blocking_thing());
 ```
@@ -277,6 +277,16 @@ pub trait Greeter {
 6. **Forgetting that `async fn` returns immediately**: until you `.await` or `spawn`, no work happens.
 7. **One giant `tokio::main` task with no concurrency**: if your `main` is awaiting things sequentially, you may not need async at all. Async pays off when you have concurrent I/O.
 8. **Assuming `impl Stream` means the body streams.** The signature promises an incremental *type*, not incremental *behavior* - a function returning `impl Stream` can happily read an entire file into a `String`, parse every record into a `Vec`, and only then yield item one. Nothing in the type system catches that. If a stream exists to bound memory, check that its body never materializes the whole input; the same trap hides inside `async_stream::stream!` blocks, where a plain `std::fs` call also blocks a runtime thread for the whole operation.
+
+## Testing Time-Dependent Async Code
+
+`tokio::time::pause` (and `#[tokio::test(start_paused = true)]`, which needs the `test-util` feature and the current-thread runtime) lets a test advance the clock instantly instead of sleeping. There is a precondition nobody mentions until it bites: **it can only control `tokio::time::Instant`, not `std::time::Instant`.** If your cache expiry, rate limiter, or backoff computes deadlines from `std::time::Instant::now()`, a paused test has no effect on it and you are back to real sleeps.
+
+The fix is in the *production* code, not the test: use `tokio::time::Instant` there. Outside a paused runtime it is `std::time::Instant::now()`, so behavior is identical - you are only buying testability. Inside the test, advance explicitly with `tokio::time::advance()` rather than `sleep`, because a paused runtime auto-advances whenever it goes idle and a `sleep` will not mean what you think it means.
+
+## Debugging a Running Runtime
+
+When a service is stalling and the profiler shows nothing hot, the problem is usually a task that is not being polled rather than one burning CPU. `tokio-console` is the debugger for exactly that: it attaches over a `tracing` subscriber and shows live per-task state, poll counts, busy versus idle time, and warnings for tasks that have blocked the runtime. It needs the `tokio_unstable` cfg flag set at build time, which is why it is a deliberate step rather than something you leave on.
 
 ## What to Defer
 
