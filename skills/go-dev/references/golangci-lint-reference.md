@@ -1,21 +1,23 @@
 # golangci-lint v2 Reference
 
-Latest: **v2.11.4** (March 2026). Requires `version: "2"` in config.
+Latest: **v2.13.1** (2026-08-20). Requires `version: "2"` in config.
+
+**Go version floor:** "golangci-lint supports Go versions lower or equal to the Go version used to compile it." Go 1.27 support arrived in v2.13.0 ("🎉 go1.27 support"), so a Go 1.27 project needs v2.13 or newer - an older pin fails outright rather than degrading. `go install` of v2.13.1 itself requires Go 1.26.
 
 ## Installation
 
 ```bash
 # Binary (recommended)
-curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.4
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.13.1
 
 # Homebrew
 brew install golangci-lint
 
 # Docker
-docker run --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.11.4 golangci-lint run
+docker run --rm -v $(pwd):/app -w /app golangci/golangci-lint:v2.13.1 golangci-lint run
 
 # go install (not recommended - dependency conflicts possible)
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 ```
 
 ## Commands
@@ -30,7 +32,10 @@ golangci-lint linters          # List enabled linters
 golangci-lint help linters     # List all available linters
 golangci-lint formatters       # List enabled formatters
 golangci-lint config path      # Show which config file is used
-golangci-lint cache clean      # Clear analysis cache
+golangci-lint cache clean      # Clear analysis cache (fixes phantom issues from stale results)
+golangci-lint cache status     # Show cache directory and size
+golangci-lint custom           # Build a binary with module plugins (.custom-gcl.yml)
+golangci-lint version          # Print version
 golangci-lint run --fast-only  # Run fast linters only (for editors)
 golangci-lint run --default=none --enable=govet  # Run specific linters
 ```
@@ -39,7 +44,11 @@ golangci-lint run --default=none --enable=govet  # Run specific linters
 
 Config file: `.golangci.yml` (searched in CWD, then parent dirs, then home).
 
-JSON Schema: `https://golangci-lint.run/jsonschema/golangci.jsonschema.json`
+JSON Schema: use the **versioned** URL matching your binary, e.g. `https://golangci-lint.run/jsonschema/golangci.v2.13.jsonschema.json`. The unversioned `golangci.jsonschema.json` tracks master and already contains options your released binary rejects, so validating against it produces false positives. `golangci-lint config verify` against the installed binary is the authoritative check.
+
+`.golangci.reference.yml` in the repo lists every supported option with descriptions and defaults - "There is a `.golangci.reference.yml` file with all supported options, their descriptions, and default values."
+
+**Cache isolation:** golangci-lint honours `GOLANGCI_LINT_CACHE`. Give each git worktree its own value so a deleted branch's cached results cannot resurface as issues in files that no longer exist.
 
 ```yaml
 version: "2"  # REQUIRED
@@ -185,6 +194,39 @@ Enabled when `default: standard` (the default):
 | wastedassign | Wasted assignments | |
 | whitespace | Unnecessary newlines | Yes |
 | wrapcheck | Error wrapping from external packages | |
+| wsl_v5 | Whitespace/cuddling style (replaces `wsl`) | |
+
+### Also Available (not in the sets above)
+
+| Linter | Description | Autofix |
+|--------|-------------|---------|
+| arangolint | ArangoDB query issues, incl. injection | |
+| canonicalheader | Non-canonical HTTP header keys | Yes |
+| clickhouselint | ClickHouse driver misuse (v2.12.0+) | |
+| embeddedstructfieldcheck | Embedded-field placement in structs | |
+| funcorder | Constructor/method ordering within a file | |
+| gochecksumtype | Exhaustiveness for sum types | |
+| godoclint | Godoc comment conventions | |
+| gomodguard_v2 | Allow/blocklist direct module dependencies | |
+| iface | Interface misuse, incl. unused methods | |
+| iotamixing | Mixed iota and explicit values in a const block | |
+| nilnil | Returning both a nil value and a nil error | |
+| noinlineerr | Inline `if err := f(); err != nil` declarations | |
+| protogetter | Direct proto field access instead of getters | Yes |
+| recvcheck | Mixed pointer/value receivers on one type | |
+| spancheck | OpenTelemetry/Census span mistakes | |
+| tagalign | Struct tag alignment | Yes |
+| unqueryvet | `SELECT *`, N+1 queries, SQL injection, tx leaks | |
+
+### Deprecated Names
+
+| Deprecated | Replacement | Since |
+|-----------|-------------|-------|
+| `wsl` | `wsl_v5` | v2.2.0 |
+| `gomodguard` | `gomodguard_v2` | v2.12.0 |
+| `exhaustruct` | `exhaustruct_v5` | v2.13.0 |
+
+Deprecated names still resolve but will be removed; `golangci-lint help linters` marks them `[deprecated]`.
 
 ## Recommended Linter Sets
 
@@ -251,7 +293,7 @@ linters:
 linters:
   default: all
   disable:
-    - exhaustruct      # Too strict for most projects
+    - exhaustruct_v5   # Too strict for most projects (v2.13.0+ name; was `exhaustruct`)
     - gochecknoglobals # Impractical for many codebases
     - gochecknoinits   # Too restrictive
     - ireturn          # Controversial
@@ -260,7 +302,7 @@ linters:
     - lll              # Line length is editor config territory
     - funlen           # Arbitrary length limits
     - godox            # FIXME/TODO are normal in active dev
-    - wsl              # Deprecated, use wsl_v5
+    - wsl_v5           # Very opinionated whitespace rules
 ```
 
 ## Nolint Directive Syntax
@@ -305,11 +347,64 @@ linters:
 
 Not enabled by default in v2 - you must opt in explicitly.
 
+`path-except` / `paths-except` are the inverses, letting a linter run *only* on matching files - "Run some linter only for test files by excluding its issues for everything else. - path-except: `_test\.go`".
+
+## Output Formats
+
+`output.formats.text` is only one of eight. All can be written simultaneously, each to its own path:
+
+```yaml
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      colors: true
+    sarif:
+      path: golangci-lint.sarif
+    junit-xml:
+      path: golangci-lint-report.xml
+```
+
+Available: `text`, `json`, `tab`, `html`, `checkstyle`, `code-climate`, `junit-xml`, `teamcity`, `sarif`.
+
+`sarif` is the path into GitHub code scanning - upload the file with `github/codeql-action/upload-sarif` and findings appear as annotations in the Security tab. `junit-xml` and `checkstyle` cover most other CI systems.
+
+## Incremental Adoption
+
+Beyond the Action's `only-new-issues`, the binary can restrict reporting to changed code:
+
+```bash
+golangci-lint run --new-from-merge-base=main   # only issues absent from the merge base
+golangci-lint run --new-from-rev=HEAD~1        # only issues introduced since a revision
+golangci-lint run --new-from-patch=changes.patch
+golangci-lint run --whole-files                # report all issues in a changed file, not just changed lines
+golangci-lint run --enable-only=errcheck       # run exactly one linter, ignoring config
+```
+
+The same knobs exist in config under `issues.new`, `issues.new-from-merge-base`, and `issues.new-from-rev`.
+
+## Module Plugins
+
+Linters not bundled with golangci-lint can be compiled into a custom binary. Define the build in `.custom-gcl.yml`, then "Run the command `golangci-lint custom`" to produce it:
+
+```yaml
+# .custom-gcl.yml
+version: v2.13.1
+name: custom-golangci-lint
+destination: ./bin
+plugins:
+  - module: github.com/example/my-linter
+    version: v1.0.0
+```
+
+The resulting binary reads the same `.golangci.yml` and exposes the plugin's linters alongside the built-in set.
+
 ## Formatters Section (v2)
 
 Formatters are separate from linters in v2. They have their own `enable`, `settings`, and `exclusions`.
 
-Available formatters: `gci`, `gofmt`, `gofumpt`, `goimports`, `golines`
+Available formatters: `gci`, `gofmt`, `gofumpt`, `goimports`, `golines`, `swaggo` (added v2.2.0)
 
 ```yaml
 formatters:
@@ -318,33 +413,44 @@ formatters:
     - goimports
   settings:
     gofumpt:
-      extra-rules: true
+      extra-rules: true          # all extra rules
+      # or select individually (v2.13.0+, gofumpt 0.11.0):
+      # extra:
+      #   group-params: true
+      #   clothe-returns: true
+      #   balance-calls: false
     goimports:
       local-prefixes: github.com/myorg/myrepo
 ```
 
-Run: `golangci-lint fmt` or `golangci-lint fmt --diff`
+Run: `golangci-lint fmt`, `golangci-lint fmt --diff`, or `golangci-lint fmt --diff-colored`.
+
+Do not pair `golangci-lint fmt` as the CI gate with a standalone `gofumpt -w` as the fixer - they can disagree on the same file, so the gate fails on code the fixer just formatted. Pick one for both roles.
 
 ## GitHub Actions
 
 Official action: `golangci/golangci-lint-action@v9`
 
 ```yaml
-- uses: actions/checkout@v6
-- uses: actions/setup-go@v6
+- uses: actions/checkout@v7
+- uses: actions/setup-go@v7
   with:
     go-version: stable
 - uses: golangci/golangci-lint-action@v9
   with:
-    version: v2.11
+    version: v2.13
     # only-new-issues: true  # For incremental adoption
 ```
+
+Keep `version:` at or above the Go version `setup-go` resolves. With `go-version: stable` that is the newest Go release, so a pin left behind after a Go major bump breaks the job.
 
 Key options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `version` | required | e.g. `v2.11` or `v2.11.4` |
+| `version` | *(optional)* | e.g. `v2.13`, `v2.13.1`, or `latest`. Declared `required: false` in `action.yml` - omit it and the action resolves a default |
+| `version-file` | - | Read the version from `.golangci-lint-version` or `.tool-versions` |
+| `install-only` | false | Install the binary without running it |
 | `only-new-issues` | false | Show only new issues on PRs |
 | `verify` | true | Validate config against JSON Schema |
 | `cache-invalidation-interval` | 7 | Days before cache refresh |
@@ -387,4 +493,7 @@ Run `golangci-lint migrate` to auto-convert v1 configs.
 | v2.5.0 | `godoclint`, `unqueryvet`, `iotamixing` linters |
 | v2.6.0 | `modernize` analyzer suite |
 | v2.9.0 | Go 1.26 support |
-| v2.11.0 | New gosec rules, revive `package-naming` |
+| v2.11.0 | New gosec rules, revive `package-naming` (⚠️ breaking: package checks moved out of `var-naming`) |
+| v2.12.0 | `clickhouselint` linter, `gomodguard_v2` major bump, JSON schema embedded in the binary |
+| v2.13.0 | **Go 1.27 support**; `exhaustruct` deprecated in favour of `exhaustruct_v5`; gofumpt 0.11.0 with granular `extra.*` options; `govet-modernize` 0.49.0 |
+| v2.13.1 | Linter bug fixes (current release) |

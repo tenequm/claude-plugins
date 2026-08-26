@@ -1,6 +1,6 @@
 # Justfile Reference for Go Projects
 
-`just` is a command runner (not a build system). It runs recipes defined in a `Justfile`.
+`just` is a command runner (not a build system). It runs recipes defined in a `Justfile`. Latest: **1.58.0** (2026-08-03).
 
 ## Installation
 
@@ -36,7 +36,7 @@ check: fmt-check lint test
 ```
 
 **Key rules:**
-- Indent with **tabs** (not spaces) - unlike Makefiles, this is strictly enforced
+- Indent recipe bodies consistently - **either** tabs or spaces works (unlike Makefiles, which demand tabs), but the indentation must be uniform within a recipe. `set indentation` makes the project's choice explicit. The templates in this reference use spaces
 - Each line runs in a separate shell (use `&&` or `\` to chain)
 - `@` prefix suppresses command echo
 - `#` comments above a recipe become its doc string
@@ -108,7 +108,44 @@ install:
 [doc("Run all tests with race detection")]
 test:
     gotestsum --format testname -- -race ./...
+
+# Run the recipe from a fixed directory, whatever the invocation dir
+[working-directory('backend')]
+migrate-up:
+    migrate -path migrations -database "$DATABASE_URL" up
+
+# Set an env var for this recipe only
+[env('CGO_ENABLED', '0')]
+build-static:
+    go build -o myapp ./cmd/myapp
+
+# Run this recipe's dependencies concurrently
+[parallel]
+check-all: lint test vuln
+
+# Print a timestamp before each command
+[timestamp]
+slow-task:
+    go test -run TestBigIntegration ./...
+
+# Treat the body as a script for one interpreter (no per-line shells)
+[script('bash', '-euo', 'pipefail', '-c')]
+release:
+    VERSION=$(git describe --tags --always)
+    goreleaser release --clean
 ```
+
+### Recipe flags with `[arg(...)]`
+
+Turns positional parameters into real command-line options - "Require values of argument `ARG` to be passed as `--LONG` option."
+
+```just
+[arg('env', long='environment', short='e')]
+deploy env='staging':
+    ./scripts/deploy.sh {{ env }}
+```
+
+Invoke as `just deploy --environment prod` instead of `just deploy prod`.
 
 ## Settings
 
@@ -118,7 +155,19 @@ set dotenv-load := true                            # Auto-load .env
 set export := true                # Export all variables as env vars
 set quiet := true                 # Suppress command echo by default
 set positional-arguments := true  # Pass args as $1, $2, etc.
+
+set dotenv-path := ".env.local"   # Load a specific env file
+set dotenv-required := true       # Fail if the env file is missing
+set dotenv-override := true       # .env wins over the ambient environment
+set working-directory := "backend"  # Default dir for every recipe
+set indentation := "    "         # Make the tabs-vs-spaces choice explicit
+set minimum-version := "1.58.0"   # Error if `just` is older than this
+set script-interpreter := ["bash", "-euo", "pipefail"]  # Default for [script] recipes
+set fallback := true              # Search parent directories for a recipe
+set no-exit-message := true       # Suppress just's own error line on failure
 ```
+
+`set minimum-version` is worth adding to any Justfile that uses recent attributes: without it, an older `just` fails with a confusing parse error instead of a version message.
 
 ## Shebang Recipes
 
@@ -346,6 +395,17 @@ pre-push:
       run: just check
 ```
 
+Note the direction of the dependency: git invokes the hook binary directly, so lefthook must be installed and its config must sit at the repo root or in `.config/` for any of this to fire. A `just` recipe cannot rescue a misplaced `lefthook.yml`.
+
+Useful in a `check` recipe:
+
+```just
+[group('ci')]
+hooks-check:
+    lefthook validate     # config is well-formed
+    lefthook dump         # print the merged effective config
+```
+
 ## Importing Recipes
 
 Split large Justfiles:
@@ -354,6 +414,13 @@ Split large Justfiles:
 # Justfile
 import 'just/db.just'
 import 'just/docker.just'
+```
+
+`import` splices recipes into the current namespace; `mod` keeps them namespaced, so recipes are invoked as `just db migrate-up`:
+
+```just
+mod db 'just/db.just'
+mod docker
 ```
 
 ```just
@@ -375,7 +442,12 @@ just --summary         # One-line summary of each recipe
 just --evaluate        # Show all variable values
 just --dry-run test    # Show what would run
 just -f path/Justfile  # Use specific Justfile
+just --fmt             # Format the Justfile in place
+just --fmt --check     # Exit non-zero if the Justfile is not formatted (CI gate)
+just --jobs 4          # Cap parallelism for [parallel] dependencies
 ```
+
+`just --fmt --check` is a natural addition to the `check` recipe - "Run `--fmt` in 'check' mode. Exits with 0 if justfile is formatted correctly."
 
 ## Tips
 
