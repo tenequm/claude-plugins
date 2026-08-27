@@ -2,7 +2,7 @@
 name: polish-new
 description: Pre-release code review that converges - runs checks, launches parallel review agents (cleanliness, design, efficiency, side-effect gating) sized to the diff, validates findings against reproducible evidence in a run ledger, fixes on approval, then reviews its own fixes until a round warrants no edits. Run on /polish-new, or when asked for a polish or pre-release review before committing or pushing.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   categories: "development"
   topics: "code-review, linting, refactoring, pre-release, diff-review"
   openclaw:
@@ -39,8 +39,8 @@ Create the run directory `.agents/polish/<YYMM-DD-HHMM>-<slug>/` with an
 `agents/` subdirectory, and start `ledger.md` recording the reviewed sha
 (`git rev-parse HEAD`) and, as they launch, one row per agent (lens, shard,
 output file, launch time, plus any run identifier the harness exposes).
-The base ref and diff stat are backfilled at the end of Phase 2, once scope is
-resolved. Findings get ledger rows as reports arrive, not later.
+Base ref and diff stat are backfilled at the end of Phase 2. Findings get ledger
+rows as reports arrive, not later.
 
 If `.agents/` is not already ignored, add `.agents/polish/` to the project's
 ignore file - run artifacts are working state, never committed.
@@ -57,8 +57,7 @@ project instructions) for the correct validation command - commonly `pnpm check`
 If checks fail: fix all errors, re-run until clean, then continue. Do not start
 the review against a failing gate. When a failure predates the diff (it
 reproduces on the base ref), still fix it - but record it in the ledger as
-`pre-existing gate failure, fixed` and surface it in the report, so the user
-learns their gate was already red.
+`pre-existing gate failure, fixed` and surface it in the report.
 
 ## Phase 2: Map
 
@@ -68,12 +67,11 @@ whichever of `main`/`master` exists); if neither resolves or there is no merge
 base (shallow clone, detached HEAD), say so and ask the user for a base.
 
 Scope is a **union**: `<base>...HEAD`, plus staged and unstaged changes, plus
-untracked (`??`) source files. All of it is under review, and the reviewed-sha
-certificate must be true of the whole union. If the work under review was
-committed this session, the branch side narrows to those commits. A staged
-change that references an untracked file is itself a finding: if the change
-lands without the file, fresh checkouts and CI break. If nothing changed at
-all, report "nothing to review" and stop.
+untracked (`??`) source files. The reviewed-sha certificate must be true of the
+whole union. If the work under review was committed this session, the branch side
+narrows to those commits. A staged change that references an untracked file is
+itself a finding: without the file, fresh checkouts and CI break. If nothing
+changed at all, report "nothing to review" and stop.
 
 Write the diff to a file in the run directory. `git diff` does not emit
 untracked files - append each one via `git diff --no-index /dev/null <path>`,
@@ -84,9 +82,9 @@ that is review input. For moved or rewritten code, note the prior version
 (`git show <ref>:<path>`) for agents to compare behavior against. Backfill the
 ledger header: base ref, diff stat.
 
-Read the diff's **structure**, not every line: which subsystems it touches,
-which control flows it changes, what it adds. Then produce the shard plan and
-arm the conditional lenses.
+Read the diff's **structure**, not every line: which subsystems it touches and
+which control flows it changes. Then produce the shard plan and arm the
+conditional lenses.
 
 **The shard plan.** If the diff is tiny (under ~50 changed lines), skip the
 finder agents and review all lenses yourself, reading every changed line - the
@@ -108,10 +106,10 @@ A shard assigns **accountability, not visibility**: every agent gets the full
 diff and may read anything in the repository; it is answerable for complete
 coverage of its shard.
 
-**The conditional lenses.** Arm Adversarial if the diff touches a security
-control (credentials, auth, permissions, payments, sandboxing, input validation
-at a trust boundary). Arm Plan Conformance if a plan or spec document for this
-branch exists.
+**The conditional lenses.** Arm Control Verification if the diff touches a
+security control (credentials, auth, permissions, payments, sandboxing, input
+validation at a trust boundary). Arm Plan Conformance if a plan or spec document
+for this branch exists.
 
 ## Phase 3: Find
 
@@ -194,7 +192,7 @@ For each side-effect flow you own:
 - **Enumerate every path to the effect** - not only the ones the inventory or the diff shows you. A gate that holds on the two paths under review and not on a third is ungated. Search for alternative entry points: wrappers, tunnels, nested or aliased dispatch, retry paths, encodings of the same command
 - **Inventory the gates**: what must precede the effect - input validation, authentication, authorization, precondition checks, idempotency
 - **Cross-check ordering**: flag any effect reachable where a gate runs after it, or not at all. Trace ACROSS boundaries - middleware firing an effect before calling the next layer is the prime suspect; the validation that should gate it often lives downstream. Check the CLI or caller side too: an expensive or one-shot resource acquired before the cheap check that would have rejected the request
-- **Verify the gate cannot be spoofed or bypassed**: a check reading values the untrusted side supplies, a parse that fails open, a filter that a different encoding of the same input evades
+- **Verify the gate holds on untrusted input**: a check reading values the untrusted side supplies, a parse that fails open, a filter that a different encoding of the same input evades
 - **Missing rollback**: a committed side-effect with no compensation when a later step on the same request can still fail
 - **Claimed invariants**: where a comment says a state is impossible, verify it. If the code can reach it, the comment is part of the finding
 - **Out of scope**: whether business logic is correct, pricing math, algorithmic correctness, anything without a crisp invariant
@@ -202,16 +200,18 @@ For each side-effect flow you own:
 Every finding cites the side-effect line, the gate it precedes (or "ungated"), and
 the control-flow path between them. No finding without two line references.
 
-### Conditional Lens: Adversarial
+### Conditional Lens: Control Verification
 
-Only when the diff touches a security control. You are not reviewing the code -
-you are trying to defeat it. Take each control the diff introduces or modifies and
-state what it promises. Then attempt to break that promise: alternative paths to
-the guarded effect, inputs whose encoding the filter does not recognize, parses
-that fail open, a check reading attacker-controlled state, ordering where the
-control is armed too late or consumed by the wrong event, resource exhaustion that
-disables it. Report each successful bypass with the exact sequence that achieves
-it. Where you failed to break a control, say what you tried.
+Only when the diff touches a security control. A control makes a promise: this
+input cannot reach that effect, this caller cannot act without that check.
+Establish whether it holds on every path - the only way is to hunt for a
+counterexample. For each control the diff introduces or modifies, state its
+promise, then look for a path where it fails: another route to the guarded
+effect, an encoding of the input the filter does not recognize, a parse that
+fails open, a check that reads values the untrusted side supplies, ordering where
+the control is armed too late or consumed by the wrong event, resource exhaustion
+that disables it. Report each failing path with the exact sequence that reaches
+it. Where a promise held, say what you tried.
 
 ### Conditional Lens: Plan Conformance
 
@@ -268,9 +268,9 @@ diff with real defects keeps digging until it stops paying.
 Render the report from `ledger.md`. Merge duplicates - if several agents flagged
 the same code, one finding, all citations. The counts must reconcile: every raw
 finding is in a category with its disposition, or in Dropped with its reason.
-Adversarial bypasses report under Correctness tagged `(bypass)`; Plan Conformance
-gaps under Correctness tagged `(plan)` when behavior is missing or wrong, under
-Design when structural only.
+Control-verification failures report under Correctness tagged `(control)`; Plan
+Conformance gaps under Correctness tagged `(plan)` when behavior is missing or
+wrong, under Design when structural only.
 
 ```
 ## Review Findings

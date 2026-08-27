@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/2.0.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-27
+
+### Changed
+
+- Reframed the conditional Adversarial lens as Control Verification: it now
+  states each control's promise and hunts for a counterexample, rather than
+  being told to defeat the control. Every failure mode, the exact-sequence
+  citation requirement, and the "say what you tried" clause are unchanged; the
+  report tag becomes `(control)`. Same reframing applied to one Side-Effect
+  Gating bullet. No mechanism change - the wording reads less like offensive
+  security tooling, which is what the lens was never doing.
+
 ## [0.1.0] - 2026-08-27
 
 ### Added
