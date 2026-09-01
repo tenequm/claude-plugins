@@ -1,8 +1,8 @@
-# Lance changelog - v7 -> v11 (section 14)
+# Lance changelog - v7 -> v12 (section 14)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
+Part of the Lance v12 reference (`lance-format/lance@v12.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v12.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -50,15 +50,17 @@ any beta pin is a git dependency; beta artifacts publish to fury.io
 - [The v9.1.0-beta.8 -> v10.0.0-beta.7 delta](#the-v910-beta8---v1000-beta7-delta)
 - [The v10.0.0-beta.7 -> v11.0.0-beta.2 delta](#the-v1000-beta7---v1100-beta2-delta)
 - [The v11.0.0-beta.2 -> v11.0.0-beta.6 delta](#the-v1100-beta2---v1100-beta6-delta)
-- [The v11.0.0-beta.6 -> v11.0.0-beta.16 delta (current tag)](#the-v1100-beta6---v1100-beta16-delta-current-tag)
+- [The v11.0.0-beta.6 -> v11.0.0-beta.16 delta (the v11 beta frontier)](#the-v1100-beta6---v1100-beta16-delta-the-v11-beta-frontier)
 - [v11 silent-corruption and wrong-results fixes](#v11-silent-corruption-and-wrong-results-fixes)
+- [v11.0.0 final (the beta.16 -> final delta)](#v1100-final-the-beta16---final-delta)
+- [v12 (release-root/12.0.0-beta.N -> v12.0.0-beta.6)](#v12-release-root1200-betan---v1200-beta6)
 
 Other files: `format-file.md` (1-4), `format-table.md` (5-10), `indexes.md` (11-12),
 `ops.md` (13, 15, 16).
 
 ---
 
-## 14. What changed (v7 -> v11)
+## 14. What changed (v7 -> v12)
 
 The v7 tag line ran `v7.0.0-beta.1` through `v7.0.0-beta.17`, then `v7.0.0-rc.1` and
 `v7.0.0`. The v7.1 line opened at `v7.1.0-beta.1`, continued through `v7.1.0-beta.4` and
@@ -79,7 +81,7 @@ the full v7 history below (still useful context), the **v7.2.0-beta.5 -> v8.0.0-
 **v9.0.0-beta.10 -> v9.0.0-beta.16 delta**, the **v9.0.0-beta.16 -> v9.0.0-beta.18 delta**,
 the **v9.0.0-beta.18 -> v9.1.0-beta.8 delta**, the **v9.1.0-beta.8 -> v10.0.0-beta.7 delta**,
 the **v10.0.0-beta.7 -> v11.0.0-beta.2 delta**, the **v11.0.0-beta.2 -> v11.0.0-beta.6 delta**,
-and finally the **v11.0.0-beta.6 -> v11.0.0-beta.16 delta** (the current tag - most important
+and finally the **v11.0.0-beta.6 -> v11.0.0-beta.16 delta** (most important
 for a v11 reader) plus a consolidated list of v11's silent-corruption and wrong-results fixes
 at the very end.
 
@@ -658,8 +660,14 @@ the full v11 delta from `v10.0.0-beta.7` stood at **222 commits and 13 breaking 
 
 **Format-level:**
 
-- **New manifest feature flag `FLAG_MEM_WAL_INDEX_CATCHUP = 128`** (#8263); `FLAG_UNKNOWN` moved
-  128 -> 256. Reader and writer must both hold it. Setting it is one-way. Section 7.
+- **New manifest feature flag at bit 128** (#8263); `FLAG_UNKNOWN` moved 128 -> 256. Reader and
+  writer must both hold it. **The flag added here did not survive the major.** It was
+  `FLAG_MEM_WAL_INDEX_CATCHUP` from `beta.4` to `beta.17`, then #8680 retired it and #8535 gave
+  the reclaimed bit to `FLAG_COVERED_INDEX_METADATA`, which is what `v11.0.0` shipped. The proto
+  field `Transaction.UpdateMemWalState.require_index_catchup` was deleted with it, and MemWAL
+  catch-up lost its flag gate: an absent `index_catchup` shard now unconditionally means
+  *unknown*. Builds pinned inside `beta.4`..`beta.17` still treat bit 128 as supported and will
+  open a covering dataset instead of refusing it. Section 7.
 - **Transaction proto field 9 deprecated** (#7432): `updated_fragment_offsets` gives way to
   field 10 `updated_fragment_offset_bitmaps`, "Per-fragment matched offsets as portable
   RoaringBitmap bytes". Writers emit field 10 only; readers prefer 10, falling back to 9 for
@@ -708,14 +716,18 @@ the full v11 delta from `v10.0.0-beta.7` stood at **222 commits and 13 breaking 
 
 ---
 
-### The v11.0.0-beta.6 -> v11.0.0-beta.16 delta (current tag)
+### The v11.0.0-beta.6 -> v11.0.0-beta.16 delta (the v11 beta frontier)
 
 91 commits, **one newly `breaking-change`-labeled**: #8235. This brings the full v11 delta from
 `v10.0.0-beta.7` to **313 commits and 14 breaking PRs** (#8024, #8025, #8026, #8027, #8028,
 #8051, #8095, #8159, #8172, #8188, #8206, #8235, #8347, #8360). Structural invariants all held
 at beta.16: 26 crates, 16 transaction ops, `num_retries` 20, `next => 2.3` / default 2.1 (no
 2.4), arrow 58, datafusion 54, MSRV 1.91.0, Edition 2024, Python 3.10+, manifest feature flags
-unchanged (`FLAG_MEM_WAL_INDEX_CATCHUP` 128, `FLAG_UNKNOWN` 256).
+unchanged (bit 128 allocated, `FLAG_UNKNOWN` 256).
+
+The **final** added two more breaking PRs (#8407, #8535) for **357 commits and 16 breaking PRs**
+to `v11.0.0`, and reallocated bit 128 to `FLAG_COVERED_INDEX_METADATA` as described above. Every
+structural invariant above still holds at `v12.0.0-beta.6`.
 
 **Breaking:**
 
@@ -832,3 +844,164 @@ listed in that delta above, split by whether upgrading is enough.
   return never decremented the late-search barrier. "Every delta must reach the barrier, even if
   it has no partitions left to search, so that siblings waiting for the initial search can
   proceed."
+
+### v11.0.0 final (the beta.16 -> final delta)
+
+Two more `breaking-change`-labeled PRs landed after `beta.16`, plus net-new surface the beta
+never carried. 44 commits.
+
+**Breaking:**
+
+- **Bit 128 reallocated** - `FLAG_MEM_WAL_INDEX_CATCHUP` retired (#8680), replaced by
+  `FLAG_COVERED_INDEX_METADATA` (#8535). Covered above and in section 7.
+- **DataFusion filter planning uses the caller's session** (#8407, labeled `breaking-change` /
+  `A-python`).
+
+**Net-new:**
+
+- **Covering indexes** (#8535). `IndexMetadata.covering_fields` (proto field 11) is "the
+  trailing subset of `fields` whose values the index carries but is not keyed on, letting a
+  query that only projects those columns be answered without a fragment take." `fields` is
+  redefined - `fields[0]` is always keyed, trailing entries may be merely carried. Index
+  invalidation widens to any column in `fields`, keyed or carried. Additive on the wire, and
+  "no index builder writes carried values yet, so today every declaration is ahead of its
+  storage." Section 11.
+- **`merge_insert` gained `write_mode`** (#8423): `Auto` (default), `RewriteRows`, or
+  `RewriteColumns`. Under `RewriteColumns` an updates-only partial-schema merge "patches the
+  source columns into the fragments that already hold the matched rows instead of rewriting
+  whole rows", through a new `InPlaceMergeInsertExec`.
+- **`Scanner::with_row_addr_prefilter(RowAddrMask)`** (#7288) - pass a precomputed row-address
+  allow/block mask as a prefilter into vector and plain scans.
+- **Deleted-row-id diff between two versions** (#8589) - `get_deleted_row_ids` returns "the ids
+  live at the begin version and absent at the end version". Version 0 is the empty snapshot;
+  reversed ranges and endpoints without stable row ids are rejected. Exposed in Python and Java.
+- **Typed Python commit conflicts** (#8563) - `lance.commit.CommitConflictError` with a
+  `retryable` attribute, on the standard `LanceDataset.commit` path and on `add_columns`,
+  replacing "a bare `OSError` whose message clients must string-match". It subclasses `OSError`,
+  so existing `except OSError` handlers keep working; switch them to the typed class to use
+  `retryable`.
+
+**Fixes needing action beyond upgrading:**
+
+- **#8834 - rebuild affected HNSW indexes.** "An insert landing mid-write can append itself to a
+  node the writer already emitted, so the written index holds edges to ids it does not contain.
+  Nothing catches it at write time." The reader now self-heals - `load` drops ids naming no node,
+  no rewrite required - but the dropped edges are permanently lost recall until a rebuild. A bad
+  `entry_point` is still refused outright: "one edge lost beats every query over the index lost".
+  The same PR covers a MemWAL case where "the generation's index then covered fewer rows than its
+  own SSTable, and SSTable vector search is index-only - no brute-force scan - so those rows
+  stopped answering once the frozen memtable retired."
+- **#8101 - de-duplicate by hand.** With a **nullable primary key**, "a row holding a null in its
+  key never matches its own earlier copy, so `merge_insert` inserts a second row rather than
+  overwriting, and every repeat write adds another", and MemWAL compaction folds flushed data in
+  by matching on the key, duplicating silently. The fix only blocks future manifests - it goes in
+  `write_manifest_file`, rejecting a nullable PK with "Primary key column and all its ancestors
+  must not be nullable". **Existing duplicates are not repaired.**
+- **#8427 - recreate the index.** An index a newer Lance wrote was silently *deleted* by an older
+  build: "For an index whose version this build cannot read, that turns 'ignore it' into 'delete
+  it' on the next commit of any kind." Invisible in-process, since `commit_transaction` seeds the
+  cache with the unfiltered list - "only a cold reader sees the loss."
+- **#8511 - rebuild LabelList.** "A complete reordered source was misclassified as partial,
+  causing an in-place column rewrite whose LabelList index still claimed coverage of the
+  rewritten fragment."
+- **#8513 - re-compact.** "Execution applied that target again as a hard `max_rows_per_file`, so
+  each task above the target produced a full fragment followed by a small remainder that could
+  become isolated."
+- **#8839 - chmod existing files.** Data and index files were created rejecting `group` and
+  `other` permissions, "which caused us trouble when using NFS"; the default is now 0o666. Files
+  already written keep their old mode.
+- **#8904 - restart long-lived sessions.** The index metadata cache was keyed by dataset
+  URI/store identity and version, "but a recreated dataset starts its version history over, so a
+  long-lived session could reuse index metadata from the previous incarnation." Now keyed on the
+  manifest ETag.
+
+**Heals on upgrade:**
+
+- **#8512** - ZoneMap "retained physical row addresses from index creation. Deferred-remap
+  compaction moved those rows and supplied a fragment-reuse remapper when the index was loaded,
+  but ZoneMap search never applied it," silently dropping live rows. (Distinct from the
+  stable-row-id path below.)
+- **Address-domain indexes stopped falsely claiming compacted fragments.** On a stable-row-id
+  dataset a rewrite used to advance every index's `fragment_bitmap` onto the new fragment ids.
+  The Rewrite path now branches on `results_are_row_addrs()`: address-domain indexes get
+  `drop_rewritten_fragments` instead, since "claiming coverage of the new fragments would make it
+  answer queries with addresses that no longer resolve"
+  (`rust/lance-table/src/transaction/manifest_build.rs:818-833`). New compactions are safe;
+  an index damaged under v10 or earlier must be recreated. Section 11.5.
+- **#8410** - Pylance 6.0.1 "cast each miniblock structural level count to `u16`", so list pages
+  with a dense prefix and many trailing empty or null lists wrapped the header while the RLE
+  payload kept every level. Restores read compatibility for files already written.
+- **#8529** - unknown index detail types "were retained in the manifest but still entered the
+  usable-index view and maintenance paths", so maintenance could try to open opaque metadata or
+  rewrite fragments without preserving foreign index coverage.
+- **#8671** - the row-id high-water mark was lost across restore.
+- **#8708** - data files were not deleted when cleanup retained an older tag (storage leak;
+  already-leaked files need a cleanup re-run).
+
+### v12 (release-root/12.0.0-beta.N -> v12.0.0-beta.6)
+
+81 commits, **exactly 3 `breaking-change`-labeled PRs** (#8606, #8640, #8903 - verified by
+querying labels for all 74 PR numbers in the range). No new index types; the only format-spec
+proto change in the whole range is the bit-8 reservation.
+
+**Breaking:**
+
+- **`WrappingObjectStore` implementors must add `wrap_paginated`** (#8606). "BREAKING CHANGE:
+  `WrappingObjectStore` implementors must add `wrap_paginated`. There is no default, so the
+  compiler points at every one of them." A wrapper returns `Some` to keep pushing listings down
+  or `None` "to give the pushdown up and have them fall back through the wrapped `inner`", and
+  one wrapper giving it up gives it up for the whole chain.
+- **MemWAL `ShardManifestStore` renamed and narrowed** (#8640): `read_latest` -> `latest`,
+  `read_latest_uncached` -> `refresh_latest`, `write` crate-private (reached via `commit_update`,
+  `claim_epoch`, `initialize_shard`). "Downstream `commit_update` closures need no change:
+  setting `version: current.version + 1` is exactly what the check expects."
+- **`lance-namespace` 0.8.5 -> 0.11.1** in Python, 0.7.7 -> 0.11.1 in Java (#8903). Four
+  `LanceNamespace` methods return response objects instead of bare values - `count_table_rows`,
+  `query_table`, `namespace_exists`, `table_exists`. "Anyone implementing `LanceNamespace`
+  themselves will need the same signature updates." Section 13.
+
+**Format:**
+
+- **Bit 8 reserved without being spent** (#8580). `FLAG_MIXED_DATA_FILE_VERSIONS = 1 << 8`,
+  declared equal to `FLAG_UNKNOWN` and enforced by a compile-time assert, plus a
+  `STICKY_PAIRED_FLAGS` carry mechanism. Spec text: implementations "that do not support the
+  per-file exact-version contract must treat this bit as unknown." Only this reservation merged;
+  #8581-#8585 (activation, per-op write targets, propagation, compaction targets, bindings) are
+  **not in the tree**. Datasets with the bit set are still refused.
+- Flag constants are now written as bit shifts rather than decimals (#8893) - "so the bit layout
+  is visible at the declaration site without changing serialized values or compatibility
+  behavior."
+
+**Net-new:**
+
+- **`ObjectStore::read_dir_page`** (#8606) - "one page of the immediate children of a prefix plus
+  an opaque token that resumes after it." The trap: "One page is one request, so a page can hold
+  fewer children than `limit` asked for and still be followed by more ... Callers walk until the
+  returned token is `None`, not until a page comes back short."
+- **Python `ObjectStoreProvider` registration** (#8522) - registers an out-of-tree provider at
+  process runtime for transparent use by `lance.dataset(...)` / `lance.write_dataset(...)`. New
+  surface: `_ObjectStoreRegistry()`, `registry.register_provider(scheme, provider)`,
+  `Session(store_registry=...)`, `_ObjectStoreProvider.memory()`.
+- **`BinaryView` accepted by the packed blob writer** (#8700) - "No changes to the on-disk format
+  or persisted bytes. Existing `Binary` and `LargeBinary` inputs produce identical output."
+- **Column slice stitching** (#8660) - stage immutable physical row slices during long fragment-
+  local rewrites and publish only after "exact, gap-free coverage has been validated against the
+  fragment snapshot". Compatible files are concatenated by relocating encoded pages; others fall
+  back to decode/re-encode. "The public surface in this PR is intentionally Rust-only."
+- **Two new `LANCE_*` env vars, and only these two in the whole range**:
+  `LANCE_IO_SERVER_SIDE_COPY_ENABLED` and `LANCE_DEEP_CLONE_STREAM_CONCURRENCY`. Section 13.
+- **Format-spec changes now require a PMC vote**, enforced by a `format-spec-vote` CI gate
+  (#7399): "Keep a spec change in its own PR, together with the matching `protos/` change and
+  only the library edits needed to compile."
+
+**Fixes:**
+
+- **#8679** - latest-version resolution no longer lists the whole `_versions/` prefix. On a
+  ~340k-version table that was "~344 sequential `ListObjectsV2` pages: **~25s of pure I/O
+  wait**", paid by every `open_table`/`describe`/`merge_insert`. Heals on upgrade.
+
+**In flight, not landed** - do not treat as shipped behavior: generic block v5 sequence
+compression (1 of 10 merged, #8324, which "introduces no protobuf variants or production
+selector changes"), and mixed data-file versions (1 of 6, #8580). Several `xuanwo/*` remote
+branches touch blob reuse indexes, stable field ids and sparse writers; none is merged into a
+v12 beta.

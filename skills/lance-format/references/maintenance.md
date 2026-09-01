@@ -1,13 +1,26 @@
 # Maintaining this skill
 
 Citations across the reference files are `path:line` relative to the `lance-format/lance` repo;
-build a permalink as `https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line
+build a permalink as `https://github.com/lance-format/lance/blob/v12.0.0-beta.6/<path>`. Line
 numbers drift between tags - treat them as approximate.
 
-To refresh: `git -C <your lance-format/lance clone> fetch --tags`, check out the newest tag
-(the major may have jumped again - the release train re-roots on any `breaking-change` label,
-and it has now fired on two consecutive lines, so sort tags by date rather than assuming the
-current major, and do not assume the previous major ever got a final), then:
+To refresh: `git -C <your lance-format/lance clone> fetch --tags`, then read the newest tag (the
+major may have jumped again - the release train re-roots on any `breaking-change` label, and it
+has now fired on **three consecutive lines**, so sort tags by date rather than assuming the
+current major, and do not assume an intermediate `.1` line ever got a final or even a beta tag).
+
+Two traps worth knowing before you start:
+
+- **A final is not on `main`.** Finals are cut on stabilization branches, so
+  `git merge-base --is-ancestor <final> main` returns false for a perfectly official release.
+  Check GitHub Releases / crates.io / PyPI to identify the stable pin, not ancestry.
+- **You do not need to move `HEAD` to read a tag.** `git show <tag>:<path>`,
+  `git grep <pattern> <tag> -- <path>`, `git diff <tagA> <tagB> -- <path>` and
+  `git ls-tree -r <tag>` are all read-only, which matters when the clone is shared. Note that a
+  `blob:none` partial clone cannot always produce arbitrary historical diffs (`git log -S` may
+  fail on absent blobs); tag-to-tag reads of present files still work.
+
+Then:
 
 1. Re-copy the docs mirror: the `.md` files of `docs/src/{guide,quickstart}`,
    `docs/src/format` (plus the `format/index/*.svg` diagrams), and
@@ -32,7 +45,7 @@ current major, and do not assume the previous major ever got a final), then:
    practices) is experience-derived - only edit it with new *measured* results, never
    speculation.
 3. Re-verify the crate workspace and re-read the format spec for the reference files
-   (`format-file.md`, `format-table.md`, `indexes.md`, `ops.md`, `changelog-v7-v11.md`), then
+   (`format-file.md`, `format-table.md`, `indexes.md`, `ops.md`, `changelog-v7-v12.md`), then
    bump `metadata.upstream` plus every current-tag version reference. `lance-reference.md` is
    only the section-number index - update it if the split changes.
 
@@ -46,7 +59,7 @@ current major, and do not assume the previous major ever got a final), then:
 | 5-10 (table format, schema evolution, versioning, row IDs, transactions, MemWAL) | `format-table.md` |
 | 11-12 (indexes, distributed write/indexing) | `indexes.md` |
 | 13, 15, 16 (object store, capability matrix, source map) | `ops.md` |
-| 14 (v7 -> v11 delta) | `changelog-v7-v11.md` |
+| 14 (v7 -> v12 delta) | `changelog-v7-v12.md` |
 
 Cross-references inside those files are written as "section N" against the original numbering,
 so the index file must stay in sync with any re-split.

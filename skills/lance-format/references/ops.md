@@ -1,8 +1,8 @@
-# Lance v11 reference - object store, capabilities, source map (sections 13, 15, 16)
+# Lance v12 reference - object store, capabilities, source map (sections 13, 15, 16)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
+Part of the Lance v12 reference (`lance-format/lance@v12.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v12.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -14,7 +14,7 @@ tags - treat them as approximate. Cross-references written as "section N" use th
 - [16. Source map](#16-source-map) - where each spec, proto, and crate lives in the repo
 
 Other files: `format-file.md` (1-4), `format-table.md` (5-10), `indexes.md` (11-12),
-`changelog-v7-v11.md` (14).
+`changelog-v7-v12.md` (14).
 
 ---
 
@@ -41,8 +41,26 @@ process lifetime; it is meant for tests and harnesses that coordinate a writer a
 independent reader. Pick distinct authorities for isolation
 (`rust/lance-io/src/object_store/providers/shared_memory.rs:16`).
 
-General options: `allow_http` (default false), `connect_timeout` (5s), `request_timeout`
-(30s), `client_max_retries` (3), `download_retry_count` (3), `proxy_url`, `user_agent`.
+General options: `allow_http` (default false), `connect_timeout` (5s), `timeout` (30s),
+`client_max_retries` (3), `download_retry_count` (3), `proxy_url`, `user_agent`.
+
+**`request_timeout` is not a key** - it appears in no Lance source at any recent tag, and #8706
+corrected the docs to `timeout`. Anything still passing `request_timeout` is silently setting
+nothing. `timeout` bounds the *entire* request, from connection until the response body
+finishes, and applies per individual request - so on a large write it must cover one complete
+multipart part upload. Raise it alongside `LANCE_INITIAL_UPLOAD_SIZE`.
+
+**Multipart part sizing** - `LANCE_INITIAL_UPLOAD_SIZE` sets the first part's size, clamped to
+5 MB..5 GB (values outside the range are clamped with a warning, not rejected;
+`rust/lance-io/src/object_writer.rs:55`).
+
+**Bulk copy strategy** (v12, #8770). Set `LANCE_IO_SERVER_SIDE_COPY_ENABLED` to a truthy value
+(`1`, `true`, `on`, `yes`, `y`, case-insensitive) to route cloud copies whose source and
+destination share the same object-store client into the provider-native server-side copy
+operation instead of streaming bytes through the client - the relevant case for index movement
+and for copying between two prefixes of one bucket. Deep clone separately bounds non-local file
+movement to four concurrent files; `LANCE_DEEP_CLONE_STREAM_CONCURRENCY` overrides that
+operation-specific limit (`rust/lance/src/dataset.rs:3352`).
 
 Per-backend highlights:
 
@@ -158,6 +176,19 @@ keyed by base-path URI) beats a `base_<id>.<key>` scoped key.
   `TableAlreadyExists` when `.lance-reserved` exists; and directory-namespace `query_table` now
   honors `structured_query` FTS, which was previously **silently ignored** - "a `structured_query`
   was silently ignored, so the scan ran with no FTS filter and returned all rows" (PR #7592).
+- **`lance-namespace` 0.8.5 -> 0.11.1 at v12** (PR #8903; `python/pyproject.toml` now pins
+  `lance-namespace>=0.11.1,<0.12`, Java moved 0.7.7 -> 0.11.1). Four `LanceNamespace` methods
+  return a response object instead of a bare value, and callers must unwrap:
+  `count_table_rows` -> `CountTableRowsResponse` (`.count` / `.getCount()`), `query_table` ->
+  `QueryTableResponse` (`.data` / `.getData()`), `namespace_exists` -> `NamespaceExistsResponse`,
+  `table_exists` -> `TableExistsResponse`. Anyone implementing `LanceNamespace` themselves needs
+  the same signature updates. Note the Python side is not type-checked against the ABC -
+  `python/lance/namespace.py` is outside the pyright allowlist - so a missed unwrap surfaces at
+  runtime, not at check time.
+- **Latest-version resolution stopped listing the whole prefix** (v12, PR #8679). It previously
+  walked all of `_versions/`: on a ~340k-version table that is ~344 sequential `ListObjectsV2`
+  pages, "~25s of pure I/O wait", paid by every `open_table` / `describe` / `merge_insert` that
+  resolves the latest version. Heals purely on upgrade.
 
 `latest_version_hint.json` (`{"version": N}` under `_versions/`) gives fast latest-version
 lookup on stores where listing is not lexicographically ordered (S3 Express, local FS); it is
@@ -168,7 +199,7 @@ Disable globally with `LANCE_USE_VERSION_HINT=0`.
 
 ## 15. Capability matrix
 
-What Lance can and cannot do at `v11.0.0-beta.16`.
+What Lance can and cannot do at `v12.0.0-beta.6`.
 
 **Storage and format**
 
@@ -249,7 +280,7 @@ registered `fts` table function (`ctx.register_udtf("fts", ...)`,
 
 ## 16. Source map
 
-Where to look in `lance-format/lance` at `v11.0.0-beta.16`.
+Where to look in `lance-format/lance` at `v12.0.0-beta.6`.
 
 | Topic | Path |
 |-------|------|

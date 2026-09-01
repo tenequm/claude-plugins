@@ -1,8 +1,8 @@
-# Lance v11 reference - table format (sections 5-10)
+# Lance v12 reference - table format (sections 5-10)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
+Part of the Lance v12 reference (`lance-format/lance@v12.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v12.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -25,7 +25,7 @@ tags - treat them as approximate. Cross-references written as "section N" use th
 - [10. MemWAL](#10-memwal)
 
 Other files: `format-file.md` (1-4), `indexes.md` (11-12), `ops.md` (13, 15, 16),
-`changelog-v7-v11.md` (14).
+`changelog-v7-v12.md` (14).
 
 ---
 
@@ -338,22 +338,44 @@ implementation seeing an unknown flag must return "unsupported" (`docs/src/forma
 | 16 | `FLAG_BASE_PATHS` | Dataset uses multiple base paths |
 | 32 | `FLAG_DISABLE_TRANSACTION_FILE` | Transaction recorded in the manifest, not a separate `.txn` file (writer-only) |
 | 64 | `FLAG_UNSTABLE_DATA_OVERLAY_FILES` | Fragments may carry data overlay files; **unstable** - release builds reject it unless explicitly opted in |
-| 128 | `FLAG_MEM_WAL_INDEX_CATCHUP` | `index_catchup` is maintained on this table, so an index absent from it is *not* caught up (v11) |
+| 128 | `FLAG_COVERED_INDEX_METADATA` | Some index declares covering columns (`IndexMetadata.covering_fields`), so `fields` means keyed columns followed by carried ones (v11 final) |
+| 256 | `FLAG_MIXED_DATA_FILE_VERSIONS` | **Reserved, not supported** - declared equal to `FLAG_UNKNOWN` at v12, so a manifest setting it is still refused |
 
 **Flags at or above 256 are unknown** and must be rejected as "unsupported" - the boundary
 moved from 128 in v11 when bit 128 was allocated. Bits 32 and 64 existed in Rust before v11 but
-were undocumented until the v11 docs catch-up.
+were undocumented until the v11 docs catch-up. At v12 the constants are written as bit shifts
+(`1 << 7`) rather than decimals; the serialized values and compatibility behavior are unchanged.
 
-`FLAG_MEM_WAL_INDEX_CATCHUP` (v11, #8263) **inverts the meaning of a missing entry**. Without
-the bit, an absent `index_catchup` entry means "fully caught up". With it, absence means the
-index is *not* known to be caught up, so the shard's SSTables must be retained until some commit
-records that it has. A reader lacking the bit would therefore answer an index-only query without
-the SSTables holding the newest rows, and a writer lacking it would change an index without
-invalidating the recorded catch-up position - so **both** must refuse the table.
+**Bit 128 changed hands mid-v11 - this is the trap.** v11 first allocated it as
+`FLAG_MEM_WAL_INDEX_CATCHUP` (#8263), then **retired that flag** (#8680) and handed the
+reclaimed bit to `FLAG_COVERED_INDEX_METADATA` (#8535) before `v11.0.0` shipped. The
+index-catchup flag does not exist at the final or at v12, and the proto field
+`Transaction.UpdateMemWalState.require_index_catchup` was deleted from the wire with it.
 
-**Setting the bit is one-way.** Once SSTables have stopped being served against a recorded
-catch-up position, reading absence as "caught up" again could drop rows only those SSTables
-still hold, so the bit is never cleared as a rollback.
+A reader without bit 128 "would answer a query on a merely-carried column with an index keyed on
+a different column and return wrong neighbours with no error"; a writer without it "would
+maintain the index as though every entry of `fields` were keyed". **Both must refuse the table.**
+
+**The reclamation has a named exposure window.** Upstream chose the bit precisely because the
+current released build already treats it as unknown - but "builds from the window where the bit
+was allocated to index catch-up (v11.0.0-beta.4 through beta.17) still count it as supported and
+will open a covering dataset rather than refuse it; that exposure comes with the reclamation and
+is inherited by whichever flag takes the bit." Do not run a pin inside that window against data
+a newer writer may touch.
+
+**MemWAL catch-up is no longer flag-gated.** With the flag gone, the semantics are
+unconditional: "A shard absent from `index_catchup` for an index means that index is *not* known
+to have caught up, so the shard's SSTables must be retained until some commit records that it
+has." There is no longer a legacy "absence means fully caught up" reading and no one-way flag to
+set - an absent shard simply means *unknown*, and a repair is scheduled.
+
+**Bit 256 is reserved without being spent** (v12, #8580). `FLAG_MIXED_DATA_FILE_VERSIONS` is
+declared `1 << 8`, the same value as `FLAG_UNKNOWN`, with a compile-time assert
+(`assert!(FLAG_MIXED_DATA_FILE_VERSIONS == FLAG_UNKNOWN)`) pinning them together, plus a
+`STICKY_PAIRED_FLAGS` carry mechanism for when activation lands. The supported set is unchanged
+and this layer still refuses mixed manifests. The spec text says implementations "that do not
+support the per-file exact-version contract must treat this bit as unknown". Only the
+reservation has merged; the five follow-up PRs are not in the tree.
 
 ### Tags
 
@@ -656,7 +678,7 @@ Removed with it: `CacheBackend::invalidate_prefix`, `LanceCache::keys`, `CacheKe
 `Dataset URI, fragment_id, row_id_meta`, up from `Dataset URI, fragment_id`. This was a
 correctness fix, not a tuning change - keyed on `fragment_id` alone, a `WriteMode::Overwrite`
 against a shared `Session` served the *previous* generation's sequence, corrupting stable row
-ids. See the data-loss roundup in `changelog-v7-v11.md`. Java can now also select a registered
+ids. See the data-loss roundup in `changelog-v7-v12.md`. Java can now also select a registered
 native cache backend by URI (e.g. `moka://?capacity=1048576`) or `CacheBackendConfig`, mutually
 exclusive with the size options (#8446).
 
@@ -734,6 +756,11 @@ contract; in-memory buffering and scheduling are implementation-defined.
 - **Shard manifest** - source of truth per shard: `writer_epoch`, shard assignment, WAL
   pointers, and "**SSTable generation state**: `current_generation` and `sstables`"
   (`mem_wal.md:271`). Versioned, immutable, committed via put-if-not-exists.
+  **v12 renamed and narrowed `ShardManifestStore`** (#8640): `read_latest` -> `latest`,
+  `read_latest_uncached` -> `refresh_latest`, and `write` became crate-private - callers reach
+  it through `commit_update`, `claim_epoch`, or `initialize_shard`
+  (`rust/lance/src/dataset/mem_wal/manifest.rs:134,151,251`). Existing `commit_update` closures
+  need no change: setting `version: current.version + 1` is exactly what the check expects.
 - **MemWAL Index** - one per table, centralizing config, **compaction progress**
   (`compacted_sstables`, "the last SSTable compacted into the base table for each shard",
   `mem_wal.md:43`), index catchup, and shard snapshots. Tied to the `UpdateMemWalState`

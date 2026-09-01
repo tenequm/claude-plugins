@@ -1,8 +1,8 @@
-# Lance v11 reference - file format (sections 1-4)
+# Lance v12 reference - file format (sections 1-4)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
+Part of the Lance v12 reference (`lance-format/lance@v12.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v12.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -25,7 +25,7 @@ reference is still authoritative for the format underneath it.
 - [4. Data types](#4-data-types)
 
 Other files: `format-table.md` (5-10), `indexes.md` (11-12), `ops.md` (13, 15, 16),
-`changelog-v7-v11.md` (14).
+`changelog-v7-v12.md` (14).
 
 ---
 
@@ -158,7 +158,7 @@ instead of panicking or yielding garbage - a file that previously "read" may now
 **Published vs tagged.** crates.io carries only final releases - `lance 9.0.1` (2026-08-06) is
 the newest, preceded that same day by the sibling patch finals 8.0.1, 7.1.0, 6.1.0, 4.0.2, and
 3.0.2. **No 10.x or 11.x version, and no pre-release of any kind, is published.** Beta and rc
-tags exist in git only (beta artifacts go to fury.io), so building against `v11.0.0-beta.16`
+tags exist in git only (beta artifacts go to fury.io), so building against `v12.0.0-beta.6`
 means a git dependency, not a registry one.
 
 **Building.** Five workspace crates carry a protobuf build script - `lance-encoding`,

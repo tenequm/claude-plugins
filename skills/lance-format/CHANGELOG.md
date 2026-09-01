@@ -7,6 +7,65 @@ and this skill adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-01
+
+### Added
+
+- Covering indexes: `IndexMetadata.covering_fields` (proto field 11), the redefinition of
+  `fields` as keyed-then-carried columns, and the widened index-invalidation rule.
+- `FLAG_MIXED_DATA_FILE_VERSIONS` (bit 8, reserved *at* the unknown boundary) and the
+  `STICKY_PAIRED_FLAGS` carry mechanism.
+- A v12 delta section in `SKILL.md` and `references/changelog-v7-v12.md`, plus a
+  beta.16 -> v11.0.0-final delta the skill previously stopped short of.
+- Object-store surface: `LANCE_IO_SERVER_SIDE_COPY_ENABLED`, `LANCE_DEEP_CLONE_STREAM_CONCURRENCY`,
+  `LANCE_INITIAL_UPLOAD_SIZE`, `LANCE_DEFAULT_IO_BUFFER_SIZE`.
+- v11-final and v12 API surface: `merge_insert` `write_mode`, `Scanner::with_row_addr_prefilter`,
+  `get_deleted_row_ids`, `ObjectStore::read_dir_page`, Python `ObjectStoreProvider` registration.
+- Field-verified compaction practice: the `CompactionPlanner` veto pattern, the index-coverage
+  bin split, `Dataset::versions()` as an O(history) round-trip cost, and a `Ne`-predicate
+  slow path (labelled as observed on an older pin, not re-verified).
+- `references/maintenance.md` now warns that finals are not ancestors of `main` and that tags
+  can be read without moving `HEAD`.
+
+### Changed
+
+- **Breaking:** tracked tag moves to `v12.0.0-beta.6`; the stable pin becomes `v11.0.0`
+  (crates.io `lance` 11.0.0, PyPI `pylance` 11.0.0, GitHub Releases `Latest`).
+- **Breaking:** manifest bit 128 is `FLAG_COVERED_INDEX_METADATA`, not
+  `FLAG_MEM_WAL_INDEX_CATCHUP` - the MemWAL bit was retired in `v11.0.0` final and the bit
+  reclaimed. Builds pinned in `v11.0.0-beta.4`..`beta.17` open a covering dataset instead of
+  refusing it.
+- MemWAL: a shard absent from `index_catchup` now unconditionally means *unknown*; the
+  flag-gated "absence means caught up" reading and the one-way-flag rule are gone.
+- Index invalidation keys off any column in `fields`, not only the indexed column.
+- `merge_insert` composite keys now index-accelerate per column.
+- `ShardManifestStore::read_latest` -> `latest`, `read_latest_uncached` -> `refresh_latest`,
+  `write` is crate-private.
+- The v11 delta is now stated against the final: 357 commits and 16 breaking PRs, up from
+  313 and 14 at `beta.16`.
+- The release-train note records **three** consecutive re-rooted lines; the 11.1 line never
+  got even one beta tag.
+- `references/changelog-v7-v11.md` renamed to `references/changelog-v7-v12.md`.
+- Docs mirror refreshed to `v12.0.0-beta.6` (6 files changed; still 45 markdown + 4 diagrams,
+  every per-directory count in `SKILL.md` unchanged).
+
+### Removed
+
+- `FLAG_MEM_WAL_INDEX_CATCHUP` and proto field
+  `Transaction.UpdateMemWalState.require_index_catchup`.
+
+### Fixed
+
+- `references/ops.md` listed `request_timeout` as a `storage_options` key. It exists in no
+  Lance source at any recent tag; the real key is `timeout`.
+- Documented the v11 fix whereby address-domain indexes (ZoneMap) lose coverage of rewritten
+  fragments under compaction instead of falsely claiming them. New compactions are safe; an
+  index damaged under v10 or earlier still needs recreating.
+- Corrected the `safe_coerce_scalar` citation (`expr.rs:302` -> `:311`) and added the field
+  report plus the three available escape hatches.
+
+Verified against: lance-format/lance@v12.0.0-beta.6
+
 ## [0.17.1] - 2026-08-21
 
 ### Changed
