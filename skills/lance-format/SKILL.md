@@ -1,17 +1,17 @@
 ---
 name: lance-format
-description: Deep reference for Lance v11 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace plus pylance. Covers the 2.x file format and structural encodings, the table format (manifests, fragments, transactions, OCC), vector / scalar / full-text indexes, MemWAL, schema evolution, time travel, namespaces, and object-store config. Use when building directly on the Lance crates or reading `.lance` datasets; this is the Lance format and engine (`lance-format/lance`), not the LanceDB product built on top of it.
+description: Deep reference for Lance v12 - the open columnar lakehouse format for multimodal AI - and its Rust crate workspace plus pylance. Covers the 2.x file format and structural encodings, the table format (manifests, fragments, transactions, OCC), vector / scalar / full-text indexes, MemWAL, schema evolution, time travel, namespaces, and object-store config. Use when building directly on the Lance crates or reading `.lance` datasets; this is the Lance format and engine (`lance-format/lance`), not the LanceDB product built on top of it.
 metadata:
-  version: "0.17.1"
+  version: "0.18.0"
   categories: "development, integrations"
   topics: "lance, columnar-format, vector-search, rust, lakehouse"
-  upstream: "lance-format/lance@v11.0.0-beta.16"
+  upstream: "lance-format/lance@v12.0.0-beta.6"
   openclaw:
     homepage: https://github.com/tenequm/skills/tree/main/skills/lance-format
     emoji: "🗄️"
 ---
 
-# Lance v11 reference
+# Lance v12 reference
 
 Lance is an open columnar format for multimodal AI - "a columnar data format that is 100x
 faster than Parquet for random access." It is not one format but a stack of interoperating
@@ -19,8 +19,8 @@ specs: a **file format**, a **table format**, **index formats**, **catalog specs
 **namespace client spec**. The Rust workspace at `lance-format/lance` implements all of them
 plus Python (`pylance`) and Java bindings.
 
-This skill tracks **`v11.0.0-beta.16`** (the `lance-format/lance` git tag), the current
-development frontier; **`v10.0.0`** is the stable pin. Pin against tags, not `main` - Lance ships
+This skill tracks **`v12.0.0-beta.6`** (the `lance-format/lance` git tag), the current
+development frontier; **`v11.0.0`** is the stable pin. Pin against tags, not `main` - Lance ships
 beta tags every few days and `next`-format encodings can change. Version landscape below.
 
 Three layers of reference, load what the task needs:
@@ -33,7 +33,7 @@ Three layers of reference, load what the task needs:
   | `format-table.md` | Dataset layout, manifests, fragments, schema evolution, versioning/tags/branches, row IDs, transactions + OCC, MemWAL | 5-10 |
   | `indexes.md` | Vector / scalar / FTS / geo indexes, distributed builds | 11-12 |
   | `ops.md` | Object store, capability matrix, source map | 13, 15, 16 |
-  | `changelog-v7-v11.md` | The full v7 -> v11 delta | 14 |
+  | `changelog-v7-v12.md` | The full v7 -> v12 delta | 14 |
 
   Cross-references written as "section N" resolve through `references/lance-reference.md`.
 - `references/performance.md` - ALL performance guidance. Part A routes to the official text and
@@ -61,15 +61,15 @@ These are two different things and conflating them produces wrong answers.
 **The wider ecosystem** (separate repos, own version lines, none covered here): Flink streaming
 writes (`lance-flink`), PostgreSQL reads via `pglance`, a Cypher graph engine (`lance-graph`), a
 dataset browser (`lance-data-viewer`), agentic context management (`lance-context`), and
-namespace catalog implementations for Hive, Polaris, Gravitino, Unity Catalog, and AWS Glue.
+namespace catalogs for Hive, Polaris, Gravitino, Unity Catalog, and AWS Glue.
 The canonical docs site is **`lance.org`**. Generated per-language SDK docs live at
 `lance-format.github.io/lance-python-doc` for Python and
 [javadoc.io](https://www.javadoc.io/doc/org.lance/lance-core/latest/index.html) for Java - the
 matching `lance-format.github.io/lance-java-doc` path 404s.
 
-If you are linking the `lance` crate in `Cargo.toml`, you are using Lance directly - use this
-skill. If a question is about LanceDB internals, the storage layer underneath it is still
-Lance, so this skill remains the authority for the format itself.
+Linking the `lance` crate in `Cargo.toml` means you are using Lance directly - use this skill.
+For LanceDB internals, the storage layer underneath is still Lance, so this skill remains the
+authority for the format itself.
 
 ## The crate workspace
 
@@ -84,14 +84,13 @@ table with roles, versions, and every workspace dep in `references/format-file.m
 live in `lance-file::version` now), removed `lance_io::encodings` and the `previous` namespaces,
 and gave each current format its own `versions/v2_{0,1,2,3}` module. Section 2.1.
 
-Since `beta.6`, the transaction code moved too (#8053/#8054/#8056):
-`rust/lance/src/dataset/transaction.rs` is **deleted**, replaced by a
-`rust/lance-table/src/transaction/` module tree (`builder`, `conflicts`, `operation`, `proto`,
-`manifest_build`, `validate`, `index_maintenance`, `row_version`, `update_map`). A
-`lance::dataset::transaction` re-export shim survives and still carries `Operation`,
+The transaction code moved too (#8053/#8054/#8056): `rust/lance/src/dataset/transaction.rs` is
+**deleted**, replaced by a `rust/lance-table/src/transaction/` module tree (`builder`,
+`conflicts`, `operation`, `proto`, `manifest_build`, `validate`, `index_maintenance`,
+`row_version`, `update_map`). A `lance::dataset::transaction` shim still re-exports `Operation`,
 `Transaction`, `TransactionBuilder`, `RewriteGroup`, `UpdateMap` and friends, so the common
-surface is unbroken - but anything importing a symbol the shim omits, or citing the old path,
-needs retargeting.
+surface is unbroken - but a symbol the shim omits, or a citation of the old path, needs
+retargeting.
 
 ## File format versions
 
@@ -119,43 +118,50 @@ persisted identity (`ConcreteFileVersion`). Details, plus the sparse auto-select
 The major is bumped by a bot, not a human: `ci/publish_beta.sh` re-roots at `MAJOR+1` whenever
 any PR since the release root carries the GitHub `breaking-change` label - the marker is the
 **label**, not a conventional-commit `!`. A major bump therefore means "some labeled breaking
-change landed", not a redesign. It has fired on two consecutive lines, which is why **neither
-`v9.1.0` nor `v10.1.0` was ever released** - the 10.1 line exists only as
-`v10.1.0-beta.{1,2}`, after which the train re-rooted to 11 off the same base.
+change landed", not a redesign. It has now fired on **three consecutive lines**, which is why
+**none of `v9.1.0`, `v10.1.0`, or `v11.1.0` was ever released**. The 10.1 line exists only as
+`v10.1.0-beta.{1,2}`; the 11.1 line never got even one beta tag - `release-root/11.1.0-beta.N`
+was cut at `371da45`, `main` went to `11.1.0-beta.0`, one labeled breaking PR landed, and the bot
+re-rooted to 12 off the *same base* (`release-root/12.0.0-beta.N` points at `371da45` too).
 
-The v10 line **did** ship a final: `v10.0.0` was tagged 2026-08-08 (annotated, "Release version
-10.0.0") on the `release/v10.0` stabilization branch, which is **not an ancestor of `main`**.
-Finals are cut on those branches, so "not on `main`" is normal, not a sign the release is
-unofficial.
+Both recent lines **did** ship a final: `v10.0.0` (2026-08-08) and `v11.0.0` (2026-08-30, cut
+from the `v11.0.0-rc.2` line). Each sits on a stabilization branch that is **not an ancestor of
+`main`** - normal for a Lance final, not a sign the release is unofficial.
 
 | Major | Its breaking theme |
 |-------|--------------------|
-| **v11** (current, `v11.0.0-beta.16`) | Fragment ids became a dataset-lifetime high-water mark; large internal reorganization of `lance-file` / `lance-encoding`; the first new manifest feature flag since v7. Delta below |
+| **v12** (current, `v12.0.0-beta.6`) | `WrappingObjectStore` implementors must add `wrap_paginated` (no default); MemWAL `ShardManifestStore` renamed and narrowed; `lance-namespace` 0.11 returns response objects. Net-new: bit 8 reserved for mixed data-file versions, paged listing, server-side copy. Delta below |
+| **v11** (`v11.0.0`, 2026-08-30) | Fragment ids became a dataset-lifetime high-water mark; large internal reorganization of `lance-file` / `lance-encoding`; the first new manifest feature flag since v7 - which was then **reallocated before the final** (below). Net-new: covering indexes, `merge_insert` `write_mode`, row-address prefilter. Delta below |
 | **v10** | Blob APIs preserve null selections; cache keys became opaque BLAKE3 digests (every warm or persisted cache cold-misses, no legacy fallback); async `create_remapper`; MemWAL renamed generation -> SSTable, merge -> compaction (wire-compatible, symbol-breaking) |
 | **v9.1** (never released; renamed into v10) | FTS/inverted creation took a `block_size` param. Net-new: Data Overlay Files (cell-level updates without base-file rewrite, unstable + env-gated), sparse structural pages, `lance-index-core` |
 | **v9** | Python 3.9 dropped; `alter_columns` fails fast when casting an indexed column; FM-Index proto rename made existing FM indexes unreadable; FTS/inverted defaults to on-disk format v2 |
 | **v8** | All index builds unified onto one segment-based lifecycle. Net-new: `lance-derive`, FM-Index, multi-bit IVF_RQ, public `approx_mode`, TOS + GooseFS object stores |
 | **v7** | MemWAL, branches, the geo/RTree index, the `lance-select` crate, ICU FTS |
 
-**`v10.0.0` is the stable pin** (2026-08-08, superseding `v9.0.1`), and it is what GitHub
-Releases marks `Latest`. crates.io carries **finals only** (newest is `lance 10.0.0`; no 11.x,
+**`v11.0.0` is the stable pin** (2026-08-30, superseding `v10.0.0`), and it is what GitHub
+Releases marks `Latest`. crates.io carries **finals only** (newest is `lance 11.0.0`; no 12.x,
 and the only pre-release in ~186 versions is the ancient `0.0.1-alpha0`); PyPI `pylance` is
-likewise at `10.0.0`. So a beta pin means a git dependency - beta wheels publish to fury.io
+likewise at `11.0.0`. So a beta pin means a git dependency - beta wheels publish to fury.io
 instead, under the renamed org (`https://pypi.fury.io/lance-format`).
 
-Full per-tag deltas, with every PR citation: `references/changelog-v7-v11.md`.
+**Do not pin anywhere in `v11.0.0-beta.4` through `beta.17`.** Those builds treat manifest bit
+128 as a MemWAL flag they support, so they *open* a covering-index dataset instead of refusing
+it - wrong neighbours, no error. Flag note in the v11 delta.
+
+Full per-tag deltas with every PR citation: `references/changelog-v7-v12.md`.
 
 ## The v11 delta
 
-313 commits from `v10.0.0-beta.7`, with **14 `breaking-change`-labeled PRs**. Most structural
-invariants held: **26 crates**, **16 transaction ops**, `CommitConfig.num_retries` **20**,
-file-format enum still `next => 2.3` / default 2.1 (no 2.4), arrow 58 / datafusion 54, MSRV
-1.91.0, Edition 2024, Python 3.10+.
+357 commits from `v10.0.0-beta.7` to the `v11.0.0` final, with **16 `breaking-change`-labeled
+PRs** (14 through `beta.16`, plus #8407 and #8535 in the final). Most structural invariants
+held: **26 crates**, **16 transaction ops**, `CommitConfig.num_retries` **20**, file-format enum
+still `next => 2.3` / default 2.1 (no 2.4), arrow 58 / datafusion 54, MSRV 1.91.0, Edition 2024,
+Python 3.10+ - and all of them still hold at `v12.0.0-beta.6`.
 
-**`references/changelog-v7-v11.md` has the full delta** - every PR citation, the per-tag
-breakdown from v7 forward, the complete Python/Java surface, and each correctness fix with the
-condition that triggers it. Load it for any "what changed / will this break me" question. What
-follows is only what bites hardest.
+**`references/changelog-v7-v12.md` has the full delta** - every PR citation, the per-tag
+breakdown from v7 forward, the Python/Java surface, and each correctness fix with its trigger
+condition. Load it for any "what changed / will this break me" question. What follows is only
+what bites hardest.
 
 **Five things that break you at v11:**
 
@@ -179,11 +185,32 @@ follows is only what bites hardest.
   external store's put-if-not-exists is a *reservation*, and a stored ETag must be **ignored**;
   a retained one makes readers reject a good manifest with `Manifest e_tag mismatch`. Section 9.
 
-**The manifest feature flags changed** - the first new bit since v7.
-`FLAG_MEM_WAL_INDEX_CATCHUP = 128` was added and `FLAG_UNKNOWN` moved 128 -> 256. Both reader
-and writer must hold the bit or refuse the table, and **setting it is one-way**. Without it, a
-missing `index_catchup` entry reads as "fully caught up", so an index-only query could answer
-without the SSTables holding the newest rows. Section 7.
+**The manifest feature flags changed - and bit 128 was then reallocated before the final.**
+v11 added the first new bit since v7 and moved `FLAG_UNKNOWN` 128 -> 256. But the bit it added,
+`FLAG_MEM_WAL_INDEX_CATCHUP`, was **retired again** (#8680) and the reclaimed bit handed to
+`FLAG_COVERED_INDEX_METADATA = 128` (#8535) before `v11.0.0` shipped. At the final and at v12
+there is no index-catchup flag and no `require_index_catchup` proto field; a shard absent from
+`index_catchup` now unconditionally means *unknown*, so its SSTables are retained and a repair
+scheduled. Both reader and writer must hold bit 128 or refuse the table. Section 7.
+
+Upstream picked that bit because a released build already refuses it - but builds from the
+window where it meant index catch-up (`beta.4` through `beta.17`) count it as supported and
+"will open a covering dataset rather than refuse it". The exposure is inherited by whichever
+flag takes the bit.
+
+**Covering indexes are the v11 net-new format feature** (#8535). `IndexMetadata.covering_fields`
+(proto field 11) names the trailing subset of `fields` an index *carries* values for but is not
+keyed on, so a query projecting only those columns is answered without a base-table take. This
+redefines `fields` as "keyed columns followed by carried ones", and widens index invalidation:
+an in-place update must clear the fragment from **any** index whose `fields` include that
+column, "whether the index is keyed on it or merely carries it". But "no index builder writes
+carried values yet", so this is capability-in-place, not a usable speedup. Section 11.
+
+**v12 reserved bit 8 without spending it.** `FLAG_MIXED_DATA_FILE_VERSIONS = 1 << 8` is declared
+*equal to* `FLAG_UNKNOWN` (a compile-time assert pins them together) and carried by a new
+`STICKY_PAIRED_FLAGS` mechanism, so the supported set is unchanged and a manifest setting the
+bit is still refused. Only the reservation (#8580) merged; the five activation PRs have not
+landed anywhere. Section 7.
 
 **Two `LANCE_*` env vars landed** (from the AMX work, #8540): `LANCE_DISABLE_AMX` (runtime kill
 switch) and `LANCE_AMX_FP16_CC` (build-time compiler override). Grep trap: `LANCE_AMX_CFG_*` and
@@ -195,28 +222,84 @@ substring of `BALANCE_FACTOR` - a plain `LANCE_*` grep reports all four as if th
 format v3; transactions above **20 MiB** spill out of the manifest entirely (#7881); MemWAL
 catch-up became derived rather than declared (#8481); transaction proto field 9
 (`updated_fragment_offsets`) is deprecated for field 10 (#7432); and compaction gained row/byte
-budgets plus fragment exclusion (#8235, #8532).
+budgets plus fragment exclusion (#8235, #8532). Landing after `beta.16`, in the final:
+`merge_insert` gained `write_mode` (`Auto` / `RewriteRows` / `RewriteColumns`, where
+`RewriteColumns` patches columns in place through a new `InPlaceMergeInsertExec` instead of
+rewriting whole rows, #8423); `Scanner::with_row_addr_prefilter(RowAddrMask)` (#7288);
+`get_deleted_row_ids` for the row-id diff between two versions (#8589); and Python commit
+conflicts became `lance.commit.CommitConflictError` with a typed `retryable` attribute - a
+subclass of `OSError`, so existing `except OSError` handlers keep working (#8563).
+
+**Address-domain indexes stopped falsely claiming compacted fragments** (v11, `beta.16` or
+earlier). On a stable-row-id dataset a rewrite used to advance *every* index's `fragment_bitmap`
+onto the new fragment ids - including ZoneMap, whose stored addresses point into the fragments
+the rewrite dropped. The Rewrite path now branches on `results_are_row_addrs()`: a row-id-domain
+index follows its data via `recalculate_fragment_bitmap`, an address-domain one gets
+`drop_rewritten_fragments` and "the scanner falls back to a full scan for them" -
+correct-but-slower instead of stale addresses. ZoneMap is squarely address-domain
+(`can_remap() -> false`; `remap()` errors `"ZoneMapIndex does not support remap"`). **Heals only
+for new compactions**: an index already damaged under v10 or earlier must be recreated.
+Section 11.
 
 **Correctness fixes split by whether upgrading is enough.** Most are read-path only and heal on
 upgrade. These do **not** - they need data rewritten or repaired: #8382 (variable-width offsets),
 #8669 (JSON columns updated from string expressions), #8509 (re-run affected merges), #7703 and
 #8539 (bad manifests already committed - validation is commit-time only), #8459 (a clobbered tag
 is unrecoverable and undetectable), #8378 (data "written to a UNC URL" landed on the local
-drive), #8482 (re-run the distributed FTS build). Conditions for each in
-`references/changelog-v7-v11.md`.
+drive), #8482 (re-run the distributed FTS build), #8834 (rebuild HNSW indexes - a persisted graph
+can hold edges to ids it does not contain; the reader now drops them, but lost recall stays lost),
+#8101 (**nullable primary keys silently duplicated rows** on every repeat `merge_insert`; the
+check only blocks future manifests, so existing duplicates must be removed by hand), #8511
+(rebuild LabelList), #8427 (recreate an index an older build silently deleted), #8513 (re-compact
+stranded remainder fragments), #8839 (chmod files written 0600 before the 0666 default), #8904
+(restart long-lived sessions holding index metadata for a dataset recreated at the same URI).
+Conditions for each in `references/changelog-v7-v12.md`.
+
+## The v12 delta
+
+81 commits from `release-root/12.0.0-beta.N`, with **exactly 3 `breaking-change`-labeled PRs**.
+No new index types, no proto change except the bit-8 reservation, and every structural invariant
+above still holds.
+
+- **`WrappingObjectStore` implementors must add `wrap_paginated`** (#8606) - "There is
+  deliberately no default: getting this wrong is either a silent loss of speed or a silent loss
+  of the wrapper, and neither announces itself." Return `Some` to keep listing pushdown through
+  the wrapper, `None` to give it up and fall back through `inner`. One wrapper giving it up gives
+  it up for the whole chain. Anything wrapping the object store fails to compile until updated.
+- **New paged listing: `ObjectStore::read_dir_page`** (#8606) - one page of a prefix's immediate
+  children plus an opaque resume token. The trap: "One page is one request, so a page can hold
+  fewer children than `limit` asked for and still be followed by more" - walk until the token is
+  `None`, never until a page comes back short.
+- **MemWAL `ShardManifestStore` renamed and narrowed** (#8640) - `read_latest` -> `latest`,
+  `read_latest_uncached` -> `refresh_latest`, and `write` is now crate-private (reach it through
+  `commit_update`, `claim_epoch`, or `initialize_shard`). Existing `commit_update` closures need
+  no change. Section 10.
+- **`lance-namespace` 0.8.5 -> 0.11.1** (#8903) - four `LanceNamespace` methods now return
+  response objects instead of bare values: `count_table_rows` -> `CountTableRowsResponse`,
+  `query_table` -> `QueryTableResponse`, `namespace_exists` / `table_exists` -> their own
+  response types. Callers unwrap; anyone implementing the trait needs the same signature updates.
+
+**Net-new, non-breaking:** provider-native bulk copy and a deep-clone concurrency bound (section
+13); Python `ObjectStoreProvider` registration for out-of-tree providers (#8522); `BinaryView` in
+the packed blob writer, format-stable (#8700); column slice stitching, Rust-only for now (#8660).
+Namespace latest-version resolution no longer lists the whole `_versions/` prefix (#8679) - on a
+~340k-version table that was ~344 list pages, "~25s of pure I/O wait", paid by every open.
+
+**In flight, not landed - do not treat as shipped:** generic block v5 compression (1 of 10 PRs
+merged, #8324) and mixed data-file versions (1 of 6, #8580, the reservation only).
 
 ## Performance questions
 
 For anything performance-shaped - slow scans or searches, remote/object-storage cost, index
 maintenance cost, memory sizing, version bloat, benchmarking - load
-`references/performance.md` first. Part A routes to every official performance recommendation
-plus the undocumented source-derived changes; Part B is field-verified practice from running
-Lance against S3-compatible storage. The governing rule stays **minimize remote calls** - fewer
-commits, fewer scans, fewer round trips - because that is where the order-of-magnitude wins are.
-v11 added an official **"Tuning remote scans"** section giving a concrete starting point
-(`LANCE_IO_THREADS=8`, `fragment_readahead=1`, `batch_readahead=2`, `io_buffer_size=64MB`) for
-cross-region or public-internet access, where the cloud default of 64 concurrent requests is too
-aggressive; treat it as a legitimate second move once call volume is already minimized.
+`references/performance.md` first. Part A routes to the official guidance plus the undocumented
+source-derived changes; Part B is field-verified practice against S3-compatible storage. The
+governing rule stays **minimize remote calls** - fewer commits, fewer scans, fewer round trips -
+because that is where the order-of-magnitude wins are. The official **"Tuning remote scans"**
+section (v11, unchanged at v12) gives a starting point for cross-region or public-internet
+access, where the cloud default of 64 concurrent requests is too aggressive: `LANCE_IO_THREADS=8`,
+`fragment_readahead=1`, `batch_readahead=2`, `io_buffer_size=64MB`. It is a legitimate second
+move once call volume is already minimized.
 
 **AMX-FP16** (#8540, beta.16) is the one v11 performance change that alters *results*, not just
 speed: where it engages, IVF partition assignment becomes **exact instead of approximate**, so
@@ -229,12 +312,12 @@ Two cache facts to know before tuning anything remote: Lance has **no resident d
 `Session` holds only index and metadata caches, never decoded values, so repeated point reads
 re-pay object-store IO), and one `Arc<Session>` shared via `DatasetBuilder::with_session` lets
 datasets share it. Cold first search is dominated by paging indexes in - `prewarm_index` is the
-remedy. All of this, with the build-time requirements, in `references/performance.md`.
+remedy. Details and build-time requirements in `references/performance.md`.
 
 ## Official docs mirror
 
 `references/docs/` mirrors `docs/src` of `lance-format/lance` at the tracked tag, verbatim -
-45 markdown files plus 4 diagrams, every one directly readable.
+45 markdown files plus 4 diagrams, all directly readable.
 
 | Directory | Files | Covers |
 |-----------|-------|--------|
@@ -249,13 +332,9 @@ remedy. All of this, with the build-time requirements, in `references/performanc
 | `format/index/system/` | 2 | Fragment reuse index, MemWAL system index |
 | `integrations/` | 1 | DataFusion SQL over Lance, incl. JSON functions |
 
-**Not mirrored:** `docs/src/images/` (the PNG/GIF diagram assets). Image links inside the
-mirrored pages therefore do not resolve - the surrounding prose is self-contained, and the four
-index-lifecycle `.drawio.svg` diagrams under `format/index/` *are* mirrored. Also outside the
-mirror by design: the `community/`, `examples/`, and `integrations/{pytorch,tensorflow}` pages;
-the landing/index stubs (`index.md`, `sdk_docs.md`, `integrations/index.md`) and the
-contributor files (`format/AGENTS.md`, `format/CLAUDE.md`); and `format/catalog` +
-`format/namespace`, which are assembled at build time from sibling repos with their own
-version lines. The Spark / Ray / Trino integrations are no longer in the checked-in nav at all -
-#8419 deleted them so the committed file matches what `make-full-website.sh` produces when the
-external docs are absent.
+**Not mirrored:** `docs/src/images/` (PNG/GIF assets), so image links in the mirrored pages do
+not resolve - the prose is self-contained, and the four `.drawio.svg` diagrams *are* mirrored.
+Also out by design: `community/`, `examples/`, `integrations/{pytorch,tensorflow}`; the
+landing stubs and contributor files (`format/AGENTS.md`, `format/CLAUDE.md`); and
+`format/catalog` + `format/namespace`, assembled at build time from sibling repos with their own
+version lines. Spark / Ray / Trino left the checked-in nav entirely in #8419.

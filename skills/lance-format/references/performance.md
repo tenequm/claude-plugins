@@ -1,6 +1,6 @@
 # Lance performance - combined reference
 
-Everything performance-shaped for Lance (`lance-format/lance@v11.0.0-beta.16`) in one place.
+Everything performance-shaped for Lance (`lance-format/lance@v12.0.0-beta.6`) in one place.
 **Part A** routes to the official guidance - which lives verbatim in this skill's
 `references/docs/` mirror, so it is pointed at rather than re-copied - and then adds the
 performance behavior upstream has *not* documented, derived from source and commit history.
@@ -42,7 +42,8 @@ Provenance: `docs/src/guide/performance.md` was byte-unchanged from `v9.1.0-beta
 `v11.0.0-beta.2`, then **changed at `v11.0.0-beta.4`** (#8387), which added the "Tuning remote
 scans" section and a `row_id_meta` component to the Row Id Sequence cache key, and **again at
 `v11.0.0-beta.16`** (#8540), which appended the "AMX Acceleration" section (+29 lines, no other
-edit). The mirror is refreshed to `v11.0.0-beta.16`, so every number, default, and
+edit). Between `v11.0.0-beta.16` and `v12.0.0-beta.6` the file did not change at all. The
+mirror is refreshed to `v12.0.0-beta.6`, so every number, default, and
 recommendation in it is current as written; the other perf-bearing sections above remain
 byte-unchanged across that range.
 
@@ -99,7 +100,9 @@ is gone.
 ## Performance changes not in the guide (v11, source-derived)
 
 Same caveat as above: verified against the `v11.0.0-beta.16` source and commit history, absent
-from `docs/src/guide/performance.md`.
+from `docs/src/guide/performance.md`. The section is unchanged at `v12.0.0-beta.6` -
+`docs/src/guide/performance.md` is byte-identical across the two tags, so the official
+"Tuning remote scans" numbers and everything Part A routes to still stand as written.
 
 **Large commits got much cheaper on the manifest side** (PR #7881). Transactions serialized
 above 20 MiB are no longer inlined into the manifest and live only in their external
@@ -199,6 +202,37 @@ so the retry skipped the failed part and completion failed with `Missing part`. 
 happen inside the HTTP connector. If you saw sporadic `Missing part` failures on large writes,
 this is the fix; OpenDAL-backed stores were never affected and are unchanged.
 
+## Performance changes not in the guide (v12, source-derived)
+
+Verified against `v12.0.0-beta.6`.
+
+**Latest-version resolution stopped listing the whole `_versions/` prefix** (PR #8679). The
+namespace path previously enumerated every historical manifest to find the newest: on a
+~340k-version table that is ~344 sequential `ListObjectsV2` pages, "~25s of pure I/O wait",
+paid by *every* `open_table` / `describe` / `merge_insert` that resolves the latest version.
+Heals purely on upgrade, and it compounds with version bloat - a second reason to keep history
+short beyond storage.
+
+**Provider-native bulk copy** (PR #8770). `LANCE_IO_SERVER_SIDE_COPY_ENABLED` routes cloud
+copies whose source and destination share an object-store client into the provider's own
+server-side copy instead of streaming bytes through the client. The relevant cases are index
+movement and copying between prefixes of one bucket. Deep clone separately bounds non-local
+file movement to four concurrent files, overridable via `LANCE_DEEP_CLONE_STREAM_CONCURRENCY`.
+
+**`LANCE_DEFAULT_IO_BUFFER_SIZE`** - the input scan for vector shuffling "uses a 2 GiB I/O
+readahead buffer by default", configurable through this variable
+(`docs/src/guide/performance.md:439`). This is a distinct knob from the per-scan
+`io_buffer_size` in the "Tuning remote scans" block, and it is the one that dominates memory
+during a large index build.
+
+**MemWAL memory accounting was wrong in a way that matters for sizing** (PR #7831).
+`MemTable::estimated_size` counts buffered batches plus the PK bloom filter - "every in-memory
+index is invisible to it." The sharp edge is HNSW: `OnlineHnswBuilder::try_with_capacity`
+pre-allocates fixed-size node storage for `max_memtable_rows`, so a vector memtable commits its
+**entire** graph on the first insert, not gradually. Measured: 125k rows -> 64.7 MiB, 500k ->
+258 MiB, 1M -> 517 MiB, 2M -> 1033 MiB, all charged on row #1. Size `max_memtable_rows` against
+that, not against the row count you expect to hold.
+
 ---
 
 # Part B: Field-verified remote-storage practices
@@ -263,6 +297,22 @@ round trips.
   moves - which is why commit count dominates.
   Note that inlining a sub-20 MiB transaction into the manifest cuts *read* round trips, not
   write ones: the separate `.txn` file is written either way.
+- **Composite `merge_insert` keys are index-accelerated now - re-measure if you avoided them.**
+  Lance used to accelerate only a *single-column* merge key, so any composite key fell back to
+  scanning the key columns on every merge to locate rows (field-measured at an older pin: 143
+  MiB read to write 8 rows, 6.36 s per call). At v12 `indexed_join_keys` probes **each** join
+  column that has a scalar index supporting exact equality, ANDs the probes inside one
+  `MapIndexExec`, and lets the downstream hash join filter on the full composite key -
+  "unindexed columns simply do not prune the candidate set - they are checked by the
+  post-filter" (`rust/lance/src/dataset/write/merge_insert.rs:1188`). Fragments outside the
+  *intersection* of the participating indexes' bitmaps still scan. The design advice inverts:
+  index the key columns rather than collapsing to one synthetic key.
+- **`Dataset::versions()` costs O(history) remote round trips, not one.** Manifests are named
+  `{u64::MAX - version}.manifest` (`rust/lance-table/src/io/commit.rs:86`) and the call issues a
+  `list_manifest_locations` followed by a `read_manifest` **per location**
+  (`rust/lance/src/dataset.rs:2608-2610`). On a version-bloated remote store this is a fetch
+  storm, with individual reads hitting the 120 s timeout. A second, non-storage reason to keep
+  history short - and a reason not to call `versions()` on a hot path at all.
 - **Use `Append` for append-shaped data; reserve `merge_insert` for genuine upserts.**
   Merge is commit-latency-bound on object storage; append is bandwidth-bound.
 - **`merge_insert` accelerates only when *every* `on` column is indexed.** The v7/v8 rule was
@@ -477,6 +527,32 @@ analogue on object storage. Mechanism, verified at `v11.0.0-beta.2`:
   when nothing will consume it (`:1653-1657`). So a non-stable-row-id dataset with **no**
   address-style index pays no remap cost at all - the "every compaction rewrites every index
   entry" rule only bites when such an index actually exists.
+
+  The correctness half of that gate is covered in `indexes.md` section 11.5: on a
+  **stable-row-id** dataset no remap happens either, so an address-domain index (ZoneMap) has
+  its rewritten fragments *dropped* from coverage rather than remapped. Before v11 the bitmap
+  was instead advanced onto the new fragment ids, leaving zones pointing at dead ones. If your
+  datasets predate v11 and carry a ZoneMap, probe payload-vs-live fragment ids with
+  `calculate_included_frags` once and recreate any index that mismatches - upgrading does not
+  repair existing damage.
+- **Replace the compaction planner rather than post-filtering its output.** `CompactionPlanner`
+  is a public trait and `compact_files_with_planner` accepts any implementation
+  (`rust/lance/src/dataset/optimize.rs:687,928`). The load-bearing detail is that an empty plan
+  short-circuits before any commit - `if compaction_plan.tasks().is_empty() { return
+  Ok(CompactionMetrics::default()); }` - so a veto-style planner produces **zero churn and zero
+  new versions**, which post-filtering cannot promise. Byte-aware policy needs no extra I/O
+  either: `DataFile.file_size_bytes` is already carried in the manifest as `CachedFileSize`.
+  Measured on a heavy-row table, deriving `target_rows_per_fragment` from bytes instead of the
+  1M-row default took daily rewrites from ~190 GB to under ~100 MB.
+- **Compaction bins split at index-coverage boundaries, and that will not be relaxed.** The
+  planner "cannot mix 'indexed' and 'non-indexed' fragments"
+  (`rust/lance/src/dataset/optimize.rs:849`); the split is load-bearing for correctness, because
+  a rewrite group straddling an index bitmap creates Rewrite-vs-CreateIndex conflicts (PR
+  #6610), and a commit that mixes them fails later at `load_indices` with "split of indexed and
+  non-indexed". The consequence to design around: freshly compacted fragments land outside every
+  per-index `fragment_bitmap`, so `unindexed_fragments()` keeps reporting them and a naive
+  "compact until clean" loop never terminates. Compaction is an **operator-cadence** verb -
+  running it at write cadence is the impedance mismatch.
 - **Compaction non-convergence is confined to the reencode path.** Candidacy is purely
   `physical_rows < target_rows_per_fragment` (`rust/lance/src/dataset/optimize.rs:728`) - there
   is no byte term anywhere, including bin splitting, and the in-tree `CompactionOptions` doc
@@ -502,15 +578,34 @@ analogue on object storage. Mechanism, verified at `v11.0.0-beta.2`:
 - **A latent timezone smell in scalar-index coercion - worth knowing, not currently a bug.**
   `safe_coerce_scalar`'s same-unit arm is
   `DataType::Timestamp(TimeUnit::Microsecond, _) => Some(value.clone())`
-  (`rust/lance-datafusion/src/expr.rs:302`): when the literal's time unit already matches the
-  column's, it returns the literal **unchanged, discarding the target timezone**. The
-  other-unit branches clone the timezone correctly. Today this is harmless - at the pinned
-  `datafusion-common` 54.x, `ScalarValue::partial_cmp` for two same-unit timestamps ignores the
-  timezone entirely, so ZoneMap range pruning compares values correctly. It is worth tracking
-  because there are **no timezone tests anywhere under `rust/lance-index/src/scalar/`**, and the
-  arm has been untouched since 2024: a future DataFusion that makes `partial_cmp` timezone-aware
-  would turn this into silently-pruned zones. If you see a tz-aware timestamp predicate
-  under-returning on a ZoneMap-indexed column, check this first - and pin your DataFusion.
+  (`rust/lance-datafusion/src/expr.rs:311`, unchanged at `v12.0.0-beta.6`): when the literal's
+  time unit already matches the column's, it returns the literal **unchanged, discarding the
+  target timezone**. The other-unit branches clone the timezone correctly. At the pinned
+  `datafusion-common` 54.x this is harmless - `ScalarValue::partial_cmp` for two same-unit
+  timestamps ignores the timezone entirely, so ZoneMap range pruning compares values correctly.
+  It is worth tracking because there are **no timezone tests anywhere under
+  `rust/lance-index/src/scalar/`**, and the arm has been untouched since 2024: a DataFusion that
+  makes `partial_cmp` timezone-aware turns this into silently-pruned zones.
+
+  **Field report, older pin, not re-verified at v12:** this has been observed firing as a real
+  bug rather than a latent one - `ScalarValue::partial_cmp` across mismatched timezones returns
+  `None`, so `>=`/`<=` are all false, every zone is pruned, and a tz-aware
+  `Timestamp(us, "UTC")` column returns 0 rows in *both* directions. It is unescapable from the
+  caller: a naive literal, an explicit `+00:00`, `cast(...)`, and
+  `arrow_cast(..., 'Timestamp(us,"UTC")')` all return 0, because DataFusion normalizes the
+  literal to the column's unit before pushdown and lands in the same-unit arm. The three ways
+  out, in increasing order of pain: **drop the index** (the only one that does not rewrite
+  data), migrate the column to `Timestamp(us, None)`, or fork the workspace via
+  `[patch.crates-io]`. If you see a tz-aware timestamp predicate under-returning on a
+  ZoneMap-indexed column, check this first - and pin your DataFusion.
+- **A bare `Ne` predicate hits a slow path; And it with `IsNotNull`.** *(Observed on a Lance
+  7-10 pin, not re-verified at v12 - treat as a thing to try, not a documented behavior.)* A
+  `!=` filter carrying no `IsNotNull` conjunct ran 59.5 s; And-ing `IsNotNull` on a **narrow**
+  column brought the same query to 7.35 s (~8x), and a related query went 130 s -> 12-17 s.
+  This is distinct from the known "no per-column null metadata" cost below. The companion lever
+  from the same investigation: when two columns are written together, filter on the narrow one
+  rather than the fat one - swapping `embedding_model IS NULL` for `vector IS NULL` took a scan
+  from 1.2 GB read to 149 KB.
 - **Answer metadata questions from the manifest, never from a column scan.**
   `count_rows("col IS NOT NULL")` reads the entire column (Lance keeps no per-column null
   metadata to short-circuit it) - on a wide text column that was ~133 MB of reads per
@@ -616,7 +711,7 @@ not in release notes:
   ship a final (2026-08-08, on `release/v10.0`) - note that finals are cut on `release/vX.Y`
   branches, so "not an ancestor of `main`" is normal and not a sign the release is unofficial.
   "Upgrade to the latest major" is still not a valid plan without checking which majors actually
-  have finals - as of `v11.0.0-beta.16` that is `v10.0.0` and below.
+  have finals - as of `v12.0.0-beta.6` that is `v11.0.0` and below.
 - **v11 changes fragment-id semantics** (PR #8206). Overwrite no longer restarts ids at 0, and
   any commit producing duplicate ids is now rejected. Two audit items on a bump: code that reads
   a fragment by a hardcoded id after an overwrite, and any dataset written by Lance 0.16 or

@@ -1,8 +1,8 @@
-# Lance v11 reference - indexes and distributed builds (sections 11-12)
+# Lance v12 reference - indexes and distributed builds (sections 11-12)
 
-Part of the Lance v11 reference (`lance-format/lance@v11.0.0-beta.16`). Citations are `path:line`
+Part of the Lance v12 reference (`lance-format/lance@v12.0.0-beta.6`). Citations are `path:line`
 relative to the repo root; build a permalink as
-`https://github.com/lance-format/lance/blob/v11.0.0-beta.16/<path>`. Line numbers drift between
+`https://github.com/lance-format/lance/blob/v12.0.0-beta.6/<path>`. Line numbers drift between
 tags - treat them as approximate. Cross-references written as "section N" use the original
 16-section numbering; `lance-reference.md` maps every number to its file.
 
@@ -17,7 +17,7 @@ tags - treat them as approximate. Cross-references written as "section N" use th
 - [12. Distributed write and indexing](#12-distributed-write-and-indexing)
 
 Other files: `format-file.md` (1-4), `format-table.md` (5-10), `ops.md` (13, 15, 16),
-`changelog-v7-v11.md` (14).
+`changelog-v7-v12.md` (14).
 
 ---
 
@@ -35,7 +35,20 @@ unindexed subplans and merge results. When a column has **no index at all**, bot
 search and full-text search transparently fall back to a flat scan rather than erroring
 (`rust/lance/src/dataset/scanner.rs:3419,3697`). Index content lives at `_indices/{UUID}`.
 `IndexMetadata` carries `uuid`, `name`, `fields`, `fragment_bitmap`, `index_details` (a typed
-`Any`), `version`.
+`Any`), `version`, and - since v11 - `covering_fields` (proto field 11).
+
+**Covering indexes / carried columns** (v11, PR #8535; manifest flag
+`FLAG_COVERED_INDEX_METADATA = 128`, section 7). `covering_fields` is "the trailing subset of
+`fields` whose values the index carries but is not keyed on, letting a query that only projects
+those columns be answered without a fragment take." This **redefines `fields`**: `fields[0]` is
+always a keyed column, but trailing entries "may instead be merely carried, not keyed on". A
+reader without the flag would select an index by plain membership of `fields` and so answer a
+query on a merely-carried column with an index keyed on a different one - wrong neighbours, no
+error - which is why both reader and writer must refuse a covering dataset without the bit.
+
+The declaration is ahead of the storage: "No index builder writes carried values yet, so today
+every declaration is ahead of its storage." Treat this as capability-in-place, not a speedup you
+can use. The wire change itself is additive.
 
 ### 11.1 Vector indexes
 
@@ -556,10 +569,36 @@ the `geo` feature.
 There is no monolithic delta-index format - new data is folded in at the **segment** level. A
 new index segment covers new fragments; engines query indexed and unindexed subplans and
 merge. In-place updates to an indexed column remove the affected fragment IDs from the
-covering segment's `fragment_bitmap`, flagging them for reindexing. After compaction, three
-strategies handle changed row addresses: do nothing (segment stops covering those fragments),
-rewrite segments with remapped addresses, or use a **fragment reuse index** (remap in memory
-at read time). Stable row IDs avoid remapping entirely at the cost of a lookup.
+covering segment's `fragment_bitmap`, flagging them for reindexing. **Since v11 that rule keys
+off any column in `fields`, not just the keyed one**: the engine "must remove the affected
+fragment IDs from the `fragment_bitmap` field of any index segment whose `fields` include that
+column - whether the index is keyed on it or merely carries it." The same widening applies to
+overlay exclusion, where the field range "is every field in the index's `fields`, not only the
+ones it is keyed on."
+
+After compaction, three strategies handle changed row addresses: do nothing (segment stops
+covering those fragments), rewrite segments with remapped addresses, or use a **fragment reuse
+index** (remap in memory at read time). Stable row IDs avoid remapping entirely at the cost of a
+lookup.
+
+**Address-domain indexes under compaction on a stable-row-id dataset** (v11 fix). Stable row IDs
+keep *row ids* stable across a rewrite, but not row *addresses* - so an index whose payload is
+address-domain cannot simply follow its data. The Rewrite commit path now branches on
+`index.results_are_row_addrs()`: a row-id-domain index gets `recalculate_fragment_bitmap` and
+follows its data to the new fragments, while an address-domain one gets
+`drop_rewritten_fragments`, because "its stored addresses point into the fragments the rewrite
+dropped. Claiming coverage of the new fragments would make it answer queries with addresses that
+no longer resolve, so drop the rewritten fragments from its coverage instead and let the scanner
+fall back to a full scan for them"
+(`rust/lance-table/src/transaction/manifest_build.rs:818-833`).
+
+ZoneMap is the address-domain case: `results_are_row_addresses() -> true`, `can_remap() ->
+false`, and `remap()` returns `"ZoneMapIndex does not support remap"`
+(`rust/lance-index/src/scalar/zonemap.rs:732,736,743`). Two consequences worth planning around:
+before v11 the bitmap was advanced unconditionally, so a compacted ZoneMap claimed fragments its
+zones had no entries for - **that damage is not repaired by upgrading, and such an index must be
+recreated**. After v11 the compacted fragments read as *unindexed* instead, so an incremental
+`optimize_indices(append)` picks them up on the next maintenance pass rather than no-oping.
 
 The caller-facing API for folding new data in is `optimize_indices(&OptimizeOptions)`
 (`rust/lance/src/index/api.rs:297`). `OptimizeOptions` (`rust/lance-index/src/optimize.rs:65`)
